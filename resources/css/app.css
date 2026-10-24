@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@plugin '@tailwindcss/forms';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+@source '../../app/Support/*.php';
+
+@theme {
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Brand green (shade 600 = #2f9e5f) */
+    --color-brand-50: #effaf3;
+    --color-brand-100: #d8f3e2;
+    --color-brand-200: #b4e6c9;
+    --color-brand-300: #82d3a8;
+    --color-brand-400: #52bb83;
+    --color-brand-500: #34a96b;
+    --color-brand-600: #2f9e5f;
+    --color-brand-700: #237a49;
+    --color-brand-800: #1f613c;
+    --color-brand-900: #1b5033;
+}
+
+[x-cloak] { display: none !important; }
+
+/* Plain inputs/selects/textarea: rounded, brand focus ring (matches the admin design) */
+input[type='text'], input[type='email'], input[type='password'], input[type='tel'], input[type='number'],
+input[type='date'], input[type='time'], input[type='search'], select, textarea {
+    border-radius: 0.5rem;
+}
