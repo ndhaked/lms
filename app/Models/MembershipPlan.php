@@ -33,6 +33,11 @@ class MembershipPlan extends Model
         return ['price' => 'decimal:2', 'registration_fee' => 'decimal:2'];
     }
 
+    public function memberships(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(StudentMembership::class, 'membership_plan_id');
+    }
+
     /** Last day covered, inclusive: a monthly plan starting 1 Jan ends 31 Jan. */
     public function endDateFor(CarbonInterface $start): CarbonInterface
     {

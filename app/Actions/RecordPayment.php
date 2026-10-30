@@ -50,8 +50,10 @@ class RecordPayment
             throw new BusinessRuleException('The payment date cannot be in the future.');
         }
 
+        $created = false;
+
         try {
-            return DB::transaction(function () use ($student, $amount, $method, $paidOn, $membership, $reference, $notes, $idempotencyKey) {
+            $payment = DB::transaction(function () use ($student, $amount, $method, $paidOn, $membership, $reference, $notes, $idempotencyKey, &$created) {
                 // Serialise payments per student so concurrent submissions cannot over-allocate.
                 Student::query()->whereKey($student->getKey())->lockForUpdate()->firstOrFail();
 
@@ -112,8 +114,19 @@ class RecordPayment
                     'receipt' => $payment->receipt_no, 'amount' => $amount, 'method' => $method, 'student' => $student->student_code,
                 ]);
 
+                $created = true;
+
                 return $payment;
             });
+
+            if ($created) {
+                \App\Support\Messaging::trigger('payment', $student, [
+                    'amount' => '₹'.number_format((float) $amount, 2),
+                    'due' => '₹'.number_format((float) StudentMembership::owing()->withBalance()->where('student_memberships.student_id', $student->id)->get()->sum('balance'), 2),
+                ], "payment:{$payment->id}");
+            }
+
+            return $payment;
         } catch (UniqueConstraintViolationException) {
             // Same idempotency key submitted twice at the same instant: hand back the first one.
             return Payment::where('idempotency_key', $idempotencyKey)->firstOr(fn () => throw new BusinessRuleException('Could not record the payment. Please try again.'));

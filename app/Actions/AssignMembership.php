@@ -39,7 +39,9 @@ class AssignMembership
         $startsOn = $startsOn->copy()->startOfDay();
         $endsOn = $plan->endDateFor($startsOn);
 
-        return DB::transaction(function () use ($student, $plan, $startsOn, $endsOn, $discount, $notes) {
+        $isRenewal = $student->memberships()->exists();
+
+        $membership = DB::transaction(function () use ($student, $plan, $startsOn, $endsOn, $discount, $notes) {
             // Serialise memberships per student so two clerks cannot create overlapping periods.
             Student::query()->whereKey($student->getKey())->lockForUpdate()->firstOrFail();
 
@@ -78,5 +80,12 @@ class AssignMembership
 
             return $membership;
         });
+
+        // tell the student, if the library switched that message on
+        \App\Support\Messaging::trigger($isRenewal ? 'renewed' : 'joined', $student, [
+            'date' => $startsOn->format('d M Y'), 'plan' => $plan->name, 'amount' => '₹'.number_format((float) $membership->price + (float) $membership->registration_fee - (float) $membership->discount, 2),
+        ], "membership:{$membership->id}");
+
+        return $membership;
     }
 }

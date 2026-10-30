@@ -329,8 +329,46 @@ class LibraryOperationsTest extends TestCase
         $this->expectException(UniqueConstraintViolationException::class);
         SeatAllocation::create([
             'seat_id' => $seat->id, 'student_id' => $other->id, 'allocated_at' => now(),
-            'active_seat_id' => $seat->id, 'active_student_id' => $other->id,
+            'shift' => 'fullday', 'active_slot' => $seat->id.'-fullday', 'active_seat_id' => $seat->id, 'active_student_id' => $other->id,
         ]);
+    }
+
+    public function test_a_seat_can_be_shared_by_different_shifts_but_not_double_booked(): void
+    {
+        [$morning, $seat] = $this->seatedReady();
+        $evening = $this->student();
+        $third = $this->student();
+        $full = $this->student();
+        foreach ([$evening, $third, $full] as $s) {
+            app(AssignMembership::class)($s, $this->plan(), today());
+        }
+
+        app(AllocateSeat::class)($seat, $morning, 'morning');
+        app(AllocateSeat::class)($seat->fresh(), $evening, 'evening');
+        $this->assertSame('occupied', $seat->fresh()->status);
+
+        $loaded = $seat->fresh()->load('activeAllocations');
+        $this->assertTrue($loaded->isFreeFor('night'));
+        $this->assertFalse($loaded->isFreeFor('morning'));
+        $this->assertFalse($loaded->isFreeFor('fullday'));
+
+        foreach ([[$third, 'morning'], [$full, 'fullday']] as [$who, $shift]) {
+            try {
+                app(AllocateSeat::class)($seat->fresh(), $who, $shift);
+                $this->fail("{$shift} must be refused");
+            } catch (BusinessRuleException) {
+            }
+        }
+
+        // releasing one shift keeps the seat occupied; releasing the last frees it
+        app(\App\Actions\ReleaseSeat::class)($morning->activeAllocation);
+        $this->assertSame('occupied', $seat->fresh()->status);
+        app(\App\Actions\ReleaseSeat::class)($evening->activeAllocation);
+        $this->assertSame('available', $seat->fresh()->status);
+
+        app(AllocateSeat::class)($seat->fresh(), $full, 'fullday');
+        $this->expectException(BusinessRuleException::class);
+        app(AllocateSeat::class)($seat->fresh(), $third, 'night');
     }
 
     // ---------- permissions on pages ----------

@@ -108,14 +108,15 @@ class LandingPageTest extends TestCase
         $this->get('/')->assertRedirect(route('login'));
     }
 
-    public function test_signed_in_people_still_go_to_their_workspace(): void
+    public function test_signed_in_people_can_see_the_page_and_reach_their_workspace(): void
     {
-        $this->actingAs($this->admin())->get('/')->assertRedirect('/admin');
+        $this->actingAs($this->admin())->get('/')->assertOk()->assertSee('Dashboard');
+        $this->get('/workspace')->assertRedirect('/admin');
 
         auth()->logout();
         $this->actingAs(User::factory()->create());
-        // a user with no library is sent to choose one, never shown the sales page
-        $this->get('/')->assertRedirect(route('library.choose'));
+        // a user with no library is sent to choose one from the workspace route
+        $this->get('/workspace')->assertRedirect(route('library.choose'));
     }
 
     public function test_the_page_ships_its_screenshots_and_search_tags(): void

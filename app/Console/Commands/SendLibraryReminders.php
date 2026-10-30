@@ -70,6 +70,8 @@ class SendLibraryReminders extends Command
             }
         }
 
+        $this->messageStudents();
+
         if (\App\Support\Entitlements::hasModule('books')) {
             app(\App\Actions\Circulation\Reservations::class)->expireDue();      // uncollected reservations lapse; their copy moves on
         }
@@ -111,5 +113,23 @@ class SendLibraryReminders extends Command
         }
 
         return $sent;
+    }
+
+    /** SMS / WhatsApp to the students themselves: a membership about to end (once each) and unpaid dues (once a week). */
+    protected function messageStudents(): void
+    {
+        if (! \App\Support\Messaging::connected()) {
+            return;
+        }
+
+        $window = max(1, (int) LibrarySettings::get('renewal_window_days'));
+        foreach (StudentMembership::with(['student', 'plan'])->expiringWithin($window)->get() as $m) {
+            \App\Support\Messaging::trigger('expiring', $m->student, ['date' => $m->ends_on->format('d M Y'), 'plan' => $m->plan?->name ?? ''], "membership:{$m->id}:{$m->ends_on->toDateString()}");
+        }
+
+        $week = now()->format('o-W');
+        foreach (StudentMembership::with('student')->owing()->withBalance()->whereDate('student_memberships.ends_on', '<', today())->get()->groupBy('student_id') as $studentId => $rows) {
+            \App\Support\Messaging::trigger('due', $rows->first()->student, ['amount' => '₹'.number_format((float) $rows->sum('balance'), 2), 'due' => '₹'.number_format((float) $rows->sum('balance'), 2)], "student:{$studentId}:{$week}");
+        }
     }
 }

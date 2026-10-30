@@ -17,7 +17,10 @@ class SubscriptionPayment extends Model
         self::PENDING => 'Pending review', self::APPROVED => 'Approved', self::REJECTED => 'Rejected', self::INFO_REQUESTED => 'More information needed',
     ];
 
-    public const METHODS = ['bank_transfer' => 'Bank transfer', 'upi' => 'UPI', 'cash' => 'Cash', 'other' => 'Other'];
+    /** Ways a library can report a payment it made to us by hand. */
+    public const MANUAL_METHODS = ['bank_transfer' => 'Bank transfer', 'upi' => 'UPI', 'cash' => 'Cash', 'other' => 'Other'];
+
+    public const METHODS = self::MANUAL_METHODS + ['razorpay' => 'Razorpay (online)'];
 
     protected $attributes = ['status' => self::PENDING];
 

@@ -792,6 +792,17 @@ class BillingTest extends TestCase
         $this->assertSame('active', $s->fresh()->status);
     }
 
+    public function test_plan_picker_preselects_plan_and_cycle(): void
+    {
+        $this->subscribe(trial: true);
+        $this->actingAs($this->owner);
+        $plan = SubscriptionPlan::where('status', 'active')->whereNotNull('price_quarterly')->first();
+
+        $this->get("/app/{$this->library->slug}/subscription/plans")->assertOk()->assertSee('Choose Plan');
+        Livewire::withQueryParams(['plan' => $plan->id, 'cycle' => 'quarterly'])->test('pages::app.subscription.index')
+            ->assertSet('showPay', true)->assertSet('planId', (string) $plan->id)->assertSet('cycle', 'quarterly');
+    }
+
     public function test_library_subscription_page_and_submission_flow(): void
     {
         $s = $this->subscribe(trial: true);

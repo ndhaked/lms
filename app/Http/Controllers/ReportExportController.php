@@ -30,7 +30,9 @@ class ReportExportController extends Controller
     {
         abort_unless($request->user()->can('students.view') && $request->user()->can('students.export'), 403);
 
-        return $this->export($request, ReportRegistry::find('student-registration'), $format, ['from' => '1970-01-01', 'until' => today()->toDateString()]);
+        $range = $request->validate(['from' => ['nullable', 'date'], 'until' => ['nullable', 'date']]);
+
+        return $this->export($request, ReportRegistry::find('student-registration'), $format, ['from' => $range['from'] ?? '1970-01-01', 'until' => $range['until'] ?? today()->toDateString()]);
     }
 
     /** The catalogue export: needs books.view + books.export and the Books module. */

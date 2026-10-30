@@ -23,6 +23,10 @@ new #[Layout('layouts::panel')] class extends Component
     #[Url]
     public string $view = 'table'; // table | map
 
+    // which shift the seat map and counts describe (a seat can be shared by students in different shifts)
+    #[Url]
+    public string $shift = 'morning';
+
     #[Url(as: 'q')]
     public string $search = '';
 
@@ -56,6 +60,7 @@ new #[Layout('layouts::panel')] class extends Component
     public ?int $allocatingSeat = null;
     public string $studentSearch = '';
     public ?int $chosenStudent = null;
+    public string $allocShift = 'fullday';
 
     public function mount(): void
     {
@@ -79,7 +84,7 @@ new #[Layout('layouts::panel')] class extends Component
     protected function query()
     {
         return Seat::query()
-            ->with(['hall', 'activeAllocation.student'])
+            ->with(['hall', 'activeAllocations.student'])
             ->when($this->search !== '', fn ($q) => $q->where('code', 'like', "%{$this->search}%"))
             ->when($this->hall !== '', fn ($q) => $q->where('study_hall_id', $this->hall))
             ->when($this->status !== '', fn ($q) => $q->where('status', $this->status))
@@ -99,10 +104,16 @@ new #[Layout('layouts::panel')] class extends Component
         return $this->query()->limit(600)->get();
     }
 
+    public function currentShift(): string
+    {
+        return isset(\App\Models\SeatAllocation::SHIFTS[$this->shift]) ? $this->shift : 'morning';
+    }
+
     #[Computed]
     public function counts(): array
     {
-        return Seat::query()->selectRaw('status, count(*) c')->groupBy('status')->pluck('c', 'status')->all();
+        // counted for the chosen shift: a seat with only a morning student is still available in the evening
+        return Seat::query()->with('activeAllocations')->get(['id', 'status'])->countBy(fn ($s) => $s->stateFor($this->currentShift()))->all();
     }
 
     /** Active students with a running membership and no current seat. */
@@ -234,6 +245,7 @@ new #[Layout('layouts::panel')] class extends Component
         $this->authorizePermission('seats.allocate');
         $this->allocatingSeat = Seat::findOrFail($seatId)->id;
         $this->reset(['studentSearch', 'chosenStudent']);
+        $this->allocShift = $this->currentShift();
     }
 
     public function cancelAllocate(): void
@@ -248,7 +260,7 @@ new #[Layout('layouts::panel')] class extends Component
 
         try {
             $seat = Seat::findOrFail($this->allocatingSeat);
-            app(AllocateSeat::class)($seat, Student::findOrFail($this->chosenStudent));
+            app(AllocateSeat::class)($seat, Student::findOrFail($this->chosenStudent), $this->allocShift);
         } catch (BusinessRuleException $e) {
             $this->addError('chosenStudent', $e->getMessage());
 
@@ -264,10 +276,10 @@ new #[Layout('layouts::panel')] class extends Component
     {
         $this->authorizePermission('seats.allocate');
 
-        $seat = Seat::with('activeAllocation')->findOrFail($seatId);
+        $seat = Seat::with('activeAllocations')->findOrFail($seatId);
         try {
-            if ($seat->activeAllocation) {
-                app(ReleaseSeat::class)($seat->activeAllocation);
+            if ($holder = $seat->holderFor($this->currentShift())) {
+                app(ReleaseSeat::class)($holder);
             }
         } catch (BusinessRuleException $e) {
             $this->dispatch('notify', type: 'error', message: $e->getMessage());
@@ -297,7 +309,7 @@ new #[Layout('layouts::panel')] class extends Component
 
     @php
         $statusColor = ['available' => 'green', 'occupied' => 'blue', 'reserved' => 'amber', 'unavailable' => 'gray', 'maintenance' => 'red'];
-        $tile = ['available' => 'border-brand-300 bg-brand-50 text-brand-700', 'occupied' => 'border-blue-300 bg-blue-50 text-blue-700', 'reserved' => 'border-amber-300 bg-amber-50 text-amber-700', 'unavailable' => 'border-gray-300 bg-gray-100 text-gray-500', 'maintenance' => 'border-red-300 bg-red-50 text-red-600'];
+        $tile = ['available' => 'border-gray-200 [&>span:last-child]:bg-emerald-50 [&>span:last-child]:text-emerald-700', 'occupied' => 'border-orange-200 bg-orange-50/40', 'reserved' => 'border-amber-300 [&>span:last-child]:bg-amber-50 [&>span:last-child]:text-amber-700', 'unavailable' => 'border-gray-200 opacity-70 [&>span:last-child]:text-gray-500', 'maintenance' => 'border-red-200 [&>span:last-child]:bg-red-50 [&>span:last-child]:text-red-600'];
         $canAllocate = $this->can('seats.allocate');
         $canManage = $this->can('seats.manage');
     @endphp
@@ -336,6 +348,18 @@ new #[Layout('layouts::panel')] class extends Component
         @endforeach
     </div>
 
+    @php
+        $shift = $this->currentShift();
+        $shiftIcon = ['morning' => 'M12 3v2m0 14v2M5 12H3m18 0h-2M6.3 6.3 4.9 4.9m14.2 14.2-1.4-1.4M6.3 17.7l-1.4 1.4m14.2-14.2-1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z', 'afternoon' => 'M12 3v2m0 14v2M5 12H3m18 0h-2M12 8a4 4 0 100 8 4 4 0 000-8z', 'evening' => 'M3 17h18M7 17a5 5 0 0110 0M12 7v2M5.6 10.6l1.4 1.4M18.4 10.6 17 12', 'night' => 'M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z', 'fullday' => 'M8 7V3m8 4V3M4 11h16M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z'];
+    @endphp
+    <div class="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
+        @foreach (\App\Models\SeatAllocation::SHIFTS as $k => $l)
+            <button type="button" wire:click="$set('shift', '{{ $k }}')" wire:key="shift-{{ $k }}" class="flex min-w-[7rem] flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold {{ $shift === $k ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow' : 'text-gray-700 hover:bg-gray-50' }}">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ $shiftIcon[$k] }}"/></svg>{{ $l }}
+            </button>
+        @endforeach
+    </div>
+
     @if ($view === 'map')
         <div class="rounded-xl border border-gray-200 bg-white p-5">
             @if ($this->mapSeats->isEmpty())
@@ -343,16 +367,19 @@ new #[Layout('layouts::panel')] class extends Component
             @else
                 @foreach ($this->mapSeats->groupBy(fn ($s) => $s->hall?->name ?? 'No hall') as $hallName => $group)
                     <h4 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400 first:mt-0">{{ $hallName }}</h4>
-                    <div class="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 xl:grid-cols-12">
+                    <div class="flex flex-wrap gap-2">
                         @foreach ($group as $seat)
-                            <div wire:key="map-{{ $seat->id }}" x-data="{ open: false }" class="relative">
-                                <button type="button" x-on:click="open = ! open" class="flex h-16 w-full flex-col items-center justify-center rounded-lg border text-center {{ $tile[$seat->status] }}">
-                                    <span class="text-sm font-semibold">{{ $seat->code }}</span>
-                                    <span class="max-w-full truncate px-1 text-[10px]">{{ $seat->activeAllocation?->student?->name ?? ucfirst($seat->status) }}</span>
+                            <div wire:key="map-{{ $seat->id }}" x-data="{ open: false }" class="relative w-[5.5rem]">
+                                @php $state = $seat->stateFor($shift); $art = in_array($state, ['available', 'occupied', 'reserved'], true) ? $state : 'blocked'; $allot = $seat->holderFor($shift); $holder = $allot?->student; @endphp
+                                <button type="button" x-on:click="open = ! open" title="{{ $seat->code }} · {{ \App\Models\Seat::STATUSES[$state] ?? $state }}{{ $holder ? ' · '.$holder->name.' ('.(\App\Models\SeatAllocation::SHIFTS[$allot->shift] ?? '').')' : '' }}" class="relative flex w-full flex-col items-center overflow-hidden rounded-xl border bg-white pt-5 text-center {{ $tile[$state] }}">
+                                    <span class="absolute left-1 top-1 rounded px-1 text-[10px] font-bold leading-4 text-white {{ ['available' => 'bg-emerald-500', 'occupied' => 'bg-red-500', 'reserved' => 'bg-amber-500'][$state] ?? 'bg-gray-500' }}">{{ $seat->code }}</span>
+                                    @if ($holder)<span class="absolute right-1 top-1 rounded bg-gray-100 px-1 text-[10px] font-bold leading-4 text-gray-600">#{{ (int) \Illuminate\Support\Str::afterLast($holder->student_code, '-') }}</span>@endif
+                                    <x-lm.seat-art :state="$art" />
+                                    <span class="mt-1 w-full truncate px-1 py-1 text-[11px] font-bold {{ $holder ? 'bg-orange-50 text-orange-600' : 'bg-black/5' }}">{{ $holder?->name ?? (\App\Models\Seat::STATUSES[$state] ?? ucfirst($state)) }}</span>
                                 </button>
                                 <div x-show="open" x-cloak x-on:click.outside="open = false" class="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-lg">
-                                    @if ($canAllocate && $seat->status === 'available') <button wire:click="startAllocate({{ $seat->id }})" x-on:click="open = false" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50">Allocate</button> @endif
-                                    @if ($canAllocate && $seat->status === 'occupied') <button wire:click="release({{ $seat->id }})" wire:confirm="Release seat {{ $seat->code }}?" x-on:click="open = false" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50">Release</button> @endif
+                                    @if ($canAllocate && $state === 'available') <button wire:click="startAllocate({{ $seat->id }})" x-on:click="open = false" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50">Allocate</button> @endif
+                                    @if ($canAllocate && $state === 'occupied') <button wire:click="release({{ $seat->id }})" wire:confirm="Release seat {{ $seat->code }} ({{ \App\Models\SeatAllocation::SHIFTS[$allot->shift] }})?" x-on:click="open = false" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50">Release</button> @endif
                                     @if ($canManage) <button wire:click="editSeat({{ $seat->id }})" x-on:click="open = false" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50">Edit</button> @endif
                                 </div>
                             </div>
@@ -373,10 +400,10 @@ new #[Layout('layouts::panel')] class extends Component
                                 <td class="px-4 py-3 text-gray-600">{{ $seat->hall?->name }}</td>
                                 <td class="px-4 py-3"><x-ui.badge>{{ \App\Models\Seat::TYPES[$seat->type] ?? $seat->type }}</x-ui.badge></td>
                                 <td class="px-4 py-3"><x-ui.badge :color="$statusColor[$seat->status] ?? 'gray'">{{ \App\Models\Seat::STATUSES[$seat->status] }}</x-ui.badge></td>
-                                <td class="px-4 py-3 text-gray-700">{{ $seat->activeAllocation?->student?->name ?? '—' }}</td>
+                                <td class="px-4 py-3 text-gray-700">@forelse ($seat->activeAllocations as $al)<div>{{ $al->student?->name }} <span class="text-xs text-gray-400">{{ \App\Models\SeatAllocation::SHIFTS[$al->shift] ?? '' }}</span></div>@empty — @endforelse</td>
                                 <td class="space-x-3 px-4 py-3 text-right">
-                                    @if ($canAllocate && $seat->status === 'available') <button wire:click="startAllocate({{ $seat->id }})" class="font-medium text-brand-600 hover:text-brand-800">Allocate</button> @endif
-                                    @if ($canAllocate && $seat->status === 'occupied') <button wire:click="release({{ $seat->id }})" wire:confirm="Release seat {{ $seat->code }}?" class="font-medium text-amber-600 hover:text-amber-800">Release</button> @endif
+                                    @if ($canAllocate && $seat->isFreeFor($shift)) <button wire:click="startAllocate({{ $seat->id }})" class="font-medium text-brand-600 hover:text-brand-800">Allocate</button> @endif
+                                    @if ($canAllocate && $seat->stateFor($shift) === 'occupied') <button wire:click="release({{ $seat->id }})" wire:confirm="Release seat {{ $seat->code }}?" class="font-medium text-amber-600 hover:text-amber-800">Release</button> @endif
                                     @if ($canManage) <button wire:click="editSeat({{ $seat->id }})" class="font-medium text-gray-500 hover:text-gray-800">Edit</button> @endif
                                 </td>
                             </tr>
@@ -433,6 +460,7 @@ new #[Layout('layouts::panel')] class extends Component
     {{-- allocate --}}
     @if ($allocatingSeat)
         <x-ui.modal title="Allocate seat" close="cancelAllocate()" max="max-w-xl" wire:key="alloc-modal">
+            <div class="mb-3"><x-ui.select name="allocShift" label="Shift" wire:model="allocShift">@foreach (\App\Models\SeatAllocation::SHIFTS as $k => $l) <option value="{{ $k }}">{{ $l }}</option> @endforeach</x-ui.select></div>
             <p class="mb-3 text-xs text-gray-500">Only active students with a running membership and no seat are listed.</p>
             <input wire:model.live.debounce.250ms="studentSearch" type="search" placeholder="Search name, phone or student ID…" class="mb-3 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500" autofocus>
             <ul class="max-h-64 space-y-1 overflow-y-auto">

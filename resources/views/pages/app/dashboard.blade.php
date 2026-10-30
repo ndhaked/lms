@@ -312,7 +312,17 @@ new #[Layout('layouts::panel')] class extends Component
 
     <x-slot:header><x-ui.page-title title="Dashboard" subtitle="Overview of library operations and insights" /></x-slot:header>
 
-    <p class="text-sm text-gray-500">Overview of library operations and insights</p>
+    @php $heroLib = \App\Support\Tenancy::library(); @endphp
+    <section class="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div>
+            <p class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-700">✦ Dashboard</p>
+            <h2 class="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">Welcome to {{ $heroLib?->name }}@if ($heroLib?->code) <span class="text-gray-400">({{ $heroLib->code }})</span>@endif</h2>
+            <p class="mt-1 text-sm text-gray-500">Live operations, revenue signals, member movement and expiring plans in one place.</p>
+        </div>
+        @if ($can('students.view') || $can('memberships.view') || $can('payments.view') || $can('attendance.view'))
+            <a href="{{ route('app.insights', ['library' => $slug]) }}" wire:navigate class="inline-flex items-center gap-2 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-brand-800">✦ View Insights</a>
+        @endif
+    </section>
 
     @if (! $setupDone)
         <section class="{{ $card }} border-brand-200 bg-brand-50/50 p-5">
@@ -333,8 +343,109 @@ new #[Layout('layouts::panel')] class extends Component
 
     @include('partials.dashboard-tools')
 
-    {{-- KPI cards --}}
-    @if ($this->stats)
+    {{-- insights, tiles (current year) or the year's own cards (a finished year) --}}
+    @if ($this->period['current'])
+        @php
+            $ins = \App\Support\LibraryInsights::all();
+            $im = $ins['members']; $imo = $ins['money']; $iat = $ins['attendance']; $ise = $ins['seats'];
+            $short = fn ($v) => \App\Support\LibraryInsights::short($v);
+            $canMembers = $can('students.view') || $can('memberships.view');
+            $canMoney = $can('payments.view');
+            $canAttend = $can('attendance.view');
+            $route = fn ($name) => route($name, ['library' => $slug]);
+            $tiles = [];
+            if ($can('students.view')) {
+                $tiles[] = ['Live members', $im['live'], 'users', 'from-indigo-600 to-violet-500', $route('app.students.index')];
+                $tiles[] = ['Total members', $im['total'], 'user-group', 'from-sky-600 to-blue-500', $route('app.students.index')];
+            }
+            if ($can('memberships.view')) {
+                $tiles[] = ['Expired members', $im['expired'], 'alert', 'from-red-600 to-rose-500', $route('app.memberships.index')];
+                $tiles[] = ['Expiring 1–3 days', $im['expiring']['1-3'], 'clock', 'from-rose-500 to-red-400', $route('app.memberships.index')];
+                $tiles[] = ['Expiring 4–7 days', $im['expiring']['4-7'], 'clock', 'from-orange-500 to-red-400', $route('app.memberships.index')];
+                $tiles[] = ['Expiring 8–15 days', $im['expiring']['8-15'], 'clock', 'from-amber-500 to-orange-400', $route('app.memberships.index')];
+            }
+            if ($canMoney) {
+                $tiles[] = ['Today collection', $short($imo['today']), 'cash', 'from-emerald-600 to-teal-500', $route('app.payments.index')];
+                $tiles[] = ['This month collection', $short($imo['month']), 'cash', 'from-teal-600 to-emerald-500', $route('app.payments.index')];
+                $tiles[] = ['Last month collection', $short($imo['last_month']), 'cash', 'from-cyan-600 to-teal-500', $route('app.payments.index')];
+                $tiles[] = ['Due amount', $short($imo['due']), 'alert', 'from-pink-600 to-fuchsia-500', $route('app.dues.index')];
+            }
+            if ($canAttend) {
+                $tiles[] = ['Today check-in', $iat['today'], 'clock', 'from-fuchsia-600 to-pink-500', $route('app.attendance.index')];
+            }
+            if ($can('seats.view')) {
+                $tiles[] = ['Seats occupied', $ise['used'].' / '.$ise['total'], 'seat', 'from-violet-600 to-purple-500', $route('app.seats.index')];
+            }
+            if ($can('expenses.view')) {
+                $tiles[] = ['Expenses this month', $short($imo['expenses']), 'receipt', 'from-slate-600 to-gray-500', $route('app.expenses.index')];
+            }
+            $pressure = [];
+            if ($can('memberships.view')) { $pressure[] = ['Expired', $im['expired_pct'], '#ef4444']; $pressure[] = ['Expiring', $im['live'] > 0 ? (int) round($im['expiring']['window'] / $im['live'] * 100) : 0, '#f59e0b']; }
+            if ($canMoney) { $pressure[] = ['Due', $imo['due_risk'], '#f97316']; }
+            if ($canAttend) { $pressure[] = ['Not in today', max(0, 100 - $iat['pct']), '#8b5cf6']; }
+            if ($can('seats.view')) { $pressure[] = ['Seats used', $ise['pct'], '#3b82f6']; }
+        @endphp
+
+        @if ($canMembers || $canMoney || $canAttend)
+            <section class="rounded-2xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5">
+                <div class="mb-4 flex flex-wrap items-end justify-between gap-2"><div><h3 class="text-lg font-extrabold text-gray-900">Dashboard insights</h3><p class="text-xs text-gray-500">Worked out from your library's current numbers</p></div>
+                    <a href="{{ route('app.insights', ['library' => $slug]) }}" wire:navigate class="text-sm font-bold text-brand-700 hover:text-brand-800">See all insights →</a></div>
+                <div class="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_0.9fr]">
+                    @if ($canMembers)
+                        <div class="rounded-2xl border border-gray-200 border-t-4 border-t-emerald-500 bg-white p-4 shadow-sm">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Member insight</p>
+                            <p class="text-xl font-extrabold text-gray-900">{{ $im['live_pct'] }}% Live</p><p class="mb-3 text-xs text-gray-500">{{ $im['live'] }} live / {{ $im['expired'] }} expired / {{ $im['expiring']['window'] }} expiring</p>
+                            <x-lm.donut :segments="[['label' => 'Live', 'value' => max(0, $im['live'] - $im['expiring']['window']), 'color' => '#10b981'], ['label' => 'Expired', 'value' => $im['expired'], 'color' => '#ef4444'], ['label' => 'Expiring', 'value' => $im['expiring']['window'], 'color' => '#f59e0b']]" :center="$im['live']" sub="live" :size="130" />
+                        </div>
+                    @endif
+                    @if ($canMoney)
+                        @php $cb = [['Collected', $imo['month'], '#10b981'], ['Due', $imo['due'], '#f59e0b'], ['Expense', $imo['expenses'], '#ef4444']]; $cbMax = max(1, max(array_column($cb, 1))); @endphp
+                        <div class="rounded-2xl border border-gray-200 border-t-4 border-t-amber-500 bg-white p-4 shadow-sm">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Collection insight</p>
+                            <p class="text-xl font-extrabold text-gray-900">{{ $imo['due_risk'] }}% Due risk</p><p class="mb-3 text-xs text-gray-500">{{ $short($imo['month']) }} collected / {{ $short($imo['due']) }} due this month</p>
+                            <div class="flex h-[170px] items-end justify-around gap-3">
+                                @foreach ($cb as [$l, $v, $c])
+                                    <div class="flex h-full flex-1 flex-col items-center justify-end gap-1"><span class="text-[10px] font-semibold text-gray-600">{{ $short($v) }}</span><div class="w-full max-w-[44px] rounded-t-md" style="height: {{ max(3, $v / $cbMax * 100) }}%; background: {{ $c }}"></div><span class="text-[10px] text-gray-500">{{ $l }}</span></div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                    @if ($canAttend)
+                        <div class="rounded-2xl border border-gray-200 border-t-4 border-t-violet-500 bg-white p-4 shadow-sm">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Attendance insight</p>
+                            <p class="text-xl font-extrabold text-gray-900">{{ $iat['pct'] }}% Checked in</p><p class="mb-3 text-xs text-gray-500">{{ $iat['today'] }} checked in from {{ $im['live'] }} live members</p>
+                            <x-lm.donut :segments="[['label' => 'Checked in', 'value' => min($iat['today'], max($im['live'], $iat['today'])), 'color' => '#8b5cf6'], ['label' => 'Not checked in', 'value' => max(0, $im['live'] - $iat['today']), 'color' => '#d1d5db']]" :center="$iat['today']" sub="today" :size="130" />
+                        </div>
+                    @endif
+                    @if ($pressure)
+                        <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                            <p class="text-base font-extrabold text-gray-900">Operational pressure</p><p class="mb-4 text-xs text-gray-500">Expired, due, expiring, attendance and seats</p>
+                            <div class="space-y-3.5">
+                                @foreach ($pressure as [$l, $v, $c])
+                                    <div><div class="mb-1 flex justify-between text-xs"><span class="font-semibold text-gray-700">{{ $l }}</span><span class="font-bold text-gray-900">{{ $v }}%</span></div><div class="h-3 rounded-full bg-gray-100"><div class="h-3 rounded-full" style="width: {{ max(2, min(100, $v)) }}%; background: {{ $c }}"></div></div></div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            </section>
+        @endif
+
+        @if ($tiles)
+            <section class="space-y-3">
+                <p class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-700">● All report</p>
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    @foreach ($tiles as [$label, $value, $icon, $grad, $href])
+                        <a href="{{ $href }}" wire:navigate wire:key="tile-{{ $loop->index }}" class="group relative flex items-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br {{ $grad }} p-4 text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg">
+                            <span class="pointer-events-none absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/15"></span>
+                            <span class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/25"><x-lm.icon :name="$icon" class="h-6 w-6" /></span>
+                            <span class="relative min-w-0"><span class="block text-xs font-semibold opacity-90">{{ $label }}</span><span class="block truncate text-2xl font-extrabold">{{ $value }}</span></span>
+                        </a>
+                    @endforeach
+                </div>
+            </section>
+        @endif
+    @elseif ($this->stats)
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             @foreach ($this->stats as [$label, $value, $icon, $tone, $hint])
                 <x-ui.stat :label="$label" :value="$value" :icon="$icon" :tone="$tone" :hint="$hint" wire:key="stat-{{ $loop->index }}" />
@@ -368,17 +479,22 @@ new #[Layout('layouts::panel')] class extends Component
             $ebTotal = collect($eb ?? [])->sum('value');
         @endphp
 
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        @php $bkGrad = ['blue' => 'from-sky-600 to-blue-500', 'red' => 'from-red-600 to-rose-500', 'orange' => 'from-orange-500 to-amber-400', 'green' => 'from-emerald-600 to-teal-500', 'purple' => 'from-violet-600 to-purple-500']; @endphp
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             @foreach ($bk['cards'] as [$label, $value, $icon, $tone, $hint])
-                <x-ui.stat :label="$label" :value="$value" :icon="$icon" :tone="$tone" :hint="$hint" wire:key="bk-{{ $loop->index }}" />
+                <div wire:key="bk-{{ $loop->index }}" class="relative flex items-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br {{ $bkGrad[$tone] ?? 'from-slate-600 to-gray-500' }} p-4 text-white shadow-md">
+                    <span class="pointer-events-none absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/15"></span>
+                    <span class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/25"><x-lm.icon :name="$icon" class="h-6 w-6" /></span>
+                    <span class="relative min-w-0"><span class="block text-xs font-semibold opacity-90">{{ $label }}</span><span class="block truncate text-2xl font-extrabold">{{ $value }}</span>@if ($hint)<span class="block truncate text-[11px] opacity-80">{{ $hint }}</span>@endif</span>
+                </div>
             @endforeach
         </div>
 
         <div class="grid gap-4 xl:grid-cols-12">
             {{-- circulation overview --}}
-            <div class="{{ $card }} p-5 xl:col-span-5">
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-sky-500 bg-white p-5 shadow-sm xl:col-span-5">
                 <div class="mb-1 flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-gray-900">Circulation Overview</h3>
+                    <h3 class="text-base font-extrabold text-gray-900">Circulation Overview</h3>
                     <span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span>
                 </div>
                 <div class="mb-1 flex items-center gap-4 text-[11px] text-gray-600">
@@ -409,8 +525,8 @@ new #[Layout('layouts::panel')] class extends Component
             </div>
 
             {{-- books by category --}}
-            <div class="{{ $card }} p-5 xl:col-span-4">
-                <h3 class="mb-3 text-sm font-semibold text-gray-900">Books by Category</h3>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-violet-500 bg-white p-5 shadow-sm xl:col-span-4">
+                <h3 class="mb-3 text-base font-extrabold text-gray-900">Books by Category</h3>
                 @if (! $cur)
                     <p class="py-10 text-center text-sm text-gray-400">Stock is live data, so it is shown for the current academic year only.</p>
                 @elseif ($catTotal === 0)
@@ -440,12 +556,12 @@ new #[Layout('layouts::panel')] class extends Component
 
             {{-- e-book usage --}}
             @if ($eb !== null)
-                <div class="{{ $card }} p-5 xl:col-span-3">
-                    <div class="mb-3 flex items-center justify-between gap-2"><h3 class="text-sm font-semibold text-gray-900">E-Book Usage</h3><span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span></div>
+                <div class="rounded-2xl border border-gray-200 border-t-4 border-t-purple-500 bg-white p-5 shadow-sm xl:col-span-3">
+                    <div class="mb-3 flex items-center justify-between gap-2"><h3 class="text-base font-extrabold text-gray-900">E-Book Usage</h3><span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span></div>
                     <ul class="space-y-3">
                         @forelse ($eb as $row)
                             <li wire:key="ebu-{{ $loop->index }}"><div class="mb-1 flex items-center justify-between text-[11px]"><span class="truncate text-gray-700">{{ $row['label'] }}</span><span class="font-medium text-gray-900">{{ number_format($row['value']) }}</span></div>
-                                <div class="h-1.5 rounded-full bg-gray-100"><div class="h-1.5 rounded-full bg-brand-600" style="width: {{ round($row['value'] / $ebMax * 100) }}%"></div></div></li>
+                                <div class="h-2 rounded-full bg-gray-100"><div class="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width: {{ round($row['value'] / $ebMax * 100) }}%"></div></div></li>
                         @empty
                             <li class="py-6 text-center text-xs text-gray-400">No e-books opened in {{ $this->period['label'] }}.</li>
                         @endforelse
@@ -453,8 +569,8 @@ new #[Layout('layouts::panel')] class extends Component
                     <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-[11px]"><span class="font-medium text-gray-700">Total e-book accesses</span><span class="text-sm font-bold text-brand-600">{{ number_format($ebTotal) }}</span></div>
                 </div>
             @else
-                <div class="{{ $card }} p-5 xl:col-span-3">
-                    <h3 class="mb-3 text-sm font-semibold text-gray-900">Quick Look</h3>
+                <div class="rounded-2xl border border-gray-200 border-t-4 border-t-amber-500 bg-white p-5 shadow-sm xl:col-span-3">
+                    <h3 class="mb-3 text-base font-extrabold text-gray-900">Quick Look</h3>
                     <p class="py-6 text-center text-xs text-gray-400">E-books are not enabled for this library.</p>
                 </div>
             @endif
@@ -462,8 +578,8 @@ new #[Layout('layouts::panel')] class extends Component
 
         <div class="grid gap-4 xl:grid-cols-12">
             @if ($cur)
-                <div class="{{ $card }} p-5 xl:col-span-5">
-                    <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Overdue Books</h3><a href="{{ route('app.circulation.loans', ['library' => $slug, 'status' => 'overdue']) }}" wire:navigate class="text-[11px] font-medium text-brand-600">View all</a></div>
+                <div class="rounded-2xl border border-gray-200 border-t-4 border-t-red-500 bg-white p-5 shadow-sm xl:col-span-5">
+                    <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">Overdue Books</h3><a href="{{ route('app.circulation.loans', ['library' => $slug, 'status' => 'overdue']) }}" wire:navigate class="text-xs font-bold text-brand-700 hover:text-brand-800">View all</a></div>
                     <table class="w-full text-[11px]">
                         <thead><tr><th class="{{ $th }}">Title</th><th class="{{ $th }}">Member</th><th class="{{ $th }}">Due Date</th><th class="{{ $th }} text-right">Days Overdue</th></tr></thead>
                         <tbody class="text-gray-700">
@@ -476,8 +592,8 @@ new #[Layout('layouts::panel')] class extends Component
                     </table>
                 </div>
             @endif
-            <div class="{{ $card }} p-5 {{ $cur ? 'xl:col-span-7' : 'xl:col-span-12' }}">
-                <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Recently Issued Books</h3><a href="{{ route('app.circulation.loans', ['library' => $slug, 'status' => 'all']) }}" wire:navigate class="text-[11px] font-medium text-brand-600">View all</a></div>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-blue-500 bg-white p-5 shadow-sm {{ $cur ? 'xl:col-span-7' : 'xl:col-span-12' }}">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">Recently Issued Books</h3><a href="{{ route('app.circulation.loans', ['library' => $slug, 'status' => 'all']) }}" wire:navigate class="text-xs font-bold text-brand-700 hover:text-brand-800">View all</a></div>
                 <table class="w-full text-[11px]">
                     <thead><tr><th class="{{ $th }}">Book Title</th><th class="{{ $th }}">Author</th><th class="{{ $th }}">Member</th><th class="{{ $th }}">Issued On</th><th class="{{ $th }}">Due On</th><th class="{{ $th }}">Barcode</th></tr></thead>
                     <tbody class="text-gray-700">
@@ -494,9 +610,9 @@ new #[Layout('layouts::panel')] class extends Component
     {{-- chart / donut / activities --}}
     <div class="grid gap-4 xl:grid-cols-12">
         @if ($can('attendance.view') || $can('students.view'))
-            <div class="{{ $card }} p-5 xl:col-span-5">
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-orange-500 bg-white p-5 shadow-sm xl:col-span-5">
                 <div class="mb-1 flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-gray-900">Attendance &amp; Enrolment Overview</h3>
+                    <h3 class="text-base font-extrabold text-gray-900">Attendance &amp; Enrolment Overview</h3>
                     <span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span>
                 </div>
                 <div class="mb-1 flex items-center gap-4 text-[11px] text-gray-600">
@@ -528,8 +644,8 @@ new #[Layout('layouts::panel')] class extends Component
         @endif
 
         @if ($can('seats.view'))
-            <div class="{{ $card }} p-5 xl:col-span-4">
-                <h3 class="mb-3 text-sm font-semibold text-gray-900">Seat Occupancy by Hall</h3>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-indigo-500 bg-white p-5 shadow-sm xl:col-span-4">
+                <h3 class="mb-3 text-base font-extrabold text-gray-900">Seat Occupancy by Hall</h3>
                 @if (! $this->period['current'])
                     <p class="py-10 text-center text-sm text-gray-400">Seat occupancy is live data, so it is shown for the current academic year only.</p>
                 @elseif ($occTotal === 0)
@@ -558,8 +674,8 @@ new #[Layout('layouts::panel')] class extends Component
             </div>
         @endif
 
-        <div class="{{ $card }} p-5 xl:col-span-3">
-            <h3 class="mb-3 text-sm font-semibold text-gray-900">Recent Activities</h3>
+        <div class="rounded-2xl border border-gray-200 border-t-4 border-t-emerald-500 bg-white p-5 shadow-sm xl:col-span-3">
+            <h3 class="mb-3 text-base font-extrabold text-gray-900">Recent Activities</h3>
             <ul class="space-y-3.5">
                 @forelse ($this->activity as $log)
                     <li class="flex items-start gap-3" wire:key="act-{{ $log->id }}">
@@ -580,8 +696,8 @@ new #[Layout('layouts::panel')] class extends Component
     {{-- tables --}}
     <div class="grid gap-4 xl:grid-cols-12">
         @if ($can('memberships.view'))
-            <div class="{{ $card }} p-5 xl:col-span-5">
-                <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">{{ $this->period['current'] ? 'Expiring Memberships' : 'Memberships started in '.$this->period['label'] }}</h3><a href="{{ route('app.memberships.index', ['library' => $slug, 'state' => 'active']) }}" wire:navigate class="text-[11px] font-medium text-brand-600">View all</a></div>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-orange-500 bg-white p-5 shadow-sm xl:col-span-5">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">{{ $this->period['current'] ? 'Expiring Memberships' : 'Memberships started in '.$this->period['label'] }}</h3><a href="{{ route('app.memberships.index', ['library' => $slug, 'state' => 'active']) }}" wire:navigate class="text-xs font-bold text-brand-700 hover:text-brand-800">View all</a></div>
                 <table class="w-full text-[11px]">
                     <thead><tr><th class="{{ $th }}">Student</th><th class="{{ $th }}">Plan</th>@if ($this->period['current'])<th class="{{ $th }}">Expires On</th><th class="{{ $th }} text-right">Days Left</th>@else<th class="{{ $th }}">Started</th><th class="{{ $th }} text-right">Charge</th>@endif</tr></thead>
                     <tbody class="text-gray-700">
@@ -603,8 +719,8 @@ new #[Layout('layouts::panel')] class extends Component
         @endif
 
         @if ($can('students.view'))
-            <div class="{{ $card }} p-5 xl:col-span-4">
-                <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">New Students</h3><a href="{{ route('app.students.index', ['library' => $slug]) }}" wire:navigate class="text-[11px] font-medium text-brand-600">View all</a></div>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-emerald-500 bg-white p-5 shadow-sm xl:col-span-4">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">New Students</h3><a href="{{ route('app.students.index', ['library' => $slug]) }}" wire:navigate class="text-xs font-bold text-brand-700 hover:text-brand-800">View all</a></div>
                 <table class="w-full text-[11px]">
                     <thead><tr><th class="{{ $th }}" colspan="2">Name</th><th class="{{ $th }}">Phone</th><th class="{{ $th }}">Joined On</th></tr></thead>
                     <tbody class="text-gray-700">
@@ -622,25 +738,25 @@ new #[Layout('layouts::panel')] class extends Component
         @endif
 
         @if ($can('payments.view'))
-            <div class="{{ $card }} p-5 xl:col-span-3">
-                <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Collections by Method</h3><span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span></div>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-teal-500 bg-white p-5 shadow-sm xl:col-span-3">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">Collections by Method</h3><span class="shrink-0 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600">{{ $this->period['label'] }}</span></div>
                 <ul class="space-y-3">
                     @forelse ($methods as $m)
                         <li><div class="mb-1 flex items-center justify-between text-[11px]"><span class="text-gray-700">{{ $m['label'] }}</span><span class="font-medium text-gray-900">₹{{ number_format($m['value'], 2) }}</span></div>
-                            <div class="h-1.5 rounded-full bg-gray-100"><div class="h-1.5 rounded-full bg-brand-600" style="width: {{ round($m['value'] / $methodMax * 100) }}%"></div></div></li>
+                            <div class="h-2 rounded-full bg-gray-100"><div class="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width: {{ round($m['value'] / $methodMax * 100) }}%"></div></div></li>
                     @empty
                         <li class="py-6 text-center text-xs text-gray-400">No payments in {{ $this->period['label'] }}.</li>
                     @endforelse
                 </ul>
-                <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-[11px]"><span class="font-medium text-gray-700">Total Collection</span><span class="text-sm font-bold text-brand-600">₹{{ number_format($methodTotal, 2) }}</span></div>
+                <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-[11px]"><span class="font-medium text-gray-700">Total Collection</span><span class="text-lg font-extrabold text-emerald-600">₹{{ number_format($methodTotal, 2) }}</span></div>
             </div>
         @endif
     </div>
 
     <div class="grid gap-4 xl:grid-cols-12">
         @if ($can('payments.view'))
-            <div class="{{ $card }} p-5 xl:col-span-9">
-                <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900">Recent Payments</h3><a href="{{ route('app.payments.index', ['library' => $slug]) }}" wire:navigate class="text-[11px] font-medium text-brand-600">View all</a></div>
+            <div class="rounded-2xl border border-gray-200 border-t-4 border-t-violet-500 bg-white p-5 shadow-sm xl:col-span-9">
+                <div class="mb-3 flex items-center justify-between"><h3 class="text-base font-extrabold text-gray-900">Recent Payments</h3><a href="{{ route('app.payments.index', ['library' => $slug]) }}" wire:navigate class="text-xs font-bold text-brand-700 hover:text-brand-800">View all</a></div>
                 <table class="w-full text-[11px]">
                     <thead><tr>@foreach (['Student', 'Receipt No.', 'Amount', 'Method', 'Date', 'Status'] as $col)<th class="{{ $th }}">{{ $col }}</th>@endforeach</tr></thead>
                     <tbody class="text-gray-700">
@@ -658,8 +774,8 @@ new #[Layout('layouts::panel')] class extends Component
             </div>
         @endif
 
-        <div class="{{ $card }} p-5 {{ $can('payments.view') ? 'xl:col-span-3' : 'xl:col-span-12' }}">
-            <h3 class="mb-3 text-sm font-semibold text-gray-900">Quick Actions</h3>
+        <div class="rounded-2xl border border-gray-200 border-t-4 border-t-amber-500 bg-white p-5 shadow-sm {{ $can('payments.view') ? 'xl:col-span-3' : 'xl:col-span-12' }}">
+            <h3 class="mb-3 text-base font-extrabold text-gray-900">Quick Actions</h3>
             <div class="grid grid-cols-2 gap-3">
                 @foreach ([
                     ['Add Student', 'users', 'green', 'app.students.create', 'students.create'],
@@ -670,8 +786,10 @@ new #[Layout('layouts::panel')] class extends Component
                     ['Add Expense', 'receipt', 'red', 'app.expenses.index', 'expenses.manage'],
                 ] as [$label, $icon, $tone, $route, $perm])
                     @if ($can($perm))
-                        <a href="{{ route($route, ['library' => $slug]) }}" wire:navigate class="flex flex-col items-center gap-2 rounded-xl border border-gray-200 px-2 py-3 text-center text-[11px] font-medium text-gray-700 transition hover:border-brand-300 hover:bg-brand-50/40">
-                            <span class="flex h-9 w-9 items-center justify-center rounded-lg {{ $tones[$tone] }}"><x-lm.icon :name="$icon" class="h-5 w-5" /></span>{{ $label }}
+                        @php $qg = ['green' => 'from-emerald-600 to-teal-500', 'blue' => 'from-sky-600 to-blue-500', 'orange' => 'from-orange-500 to-amber-400', 'purple' => 'from-violet-600 to-purple-500', 'red' => 'from-red-600 to-rose-500'][$tone] ?? 'from-slate-600 to-gray-500'; @endphp
+                        <a href="{{ route($route, ['library' => $slug]) }}" wire:navigate class="relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-br {{ $qg }} px-2 py-4 text-center text-xs font-bold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg">
+                            <span class="pointer-events-none absolute -bottom-6 -right-5 h-16 w-16 rounded-full bg-white/15"></span>
+                            <span class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-white/25"><x-lm.icon :name="$icon" class="h-5 w-5" /></span><span class="relative">{{ $label }}</span>
                         </a>
                     @endif
                 @endforeach

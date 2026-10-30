@@ -17,6 +17,19 @@ class ApproveSubscriptionPayment
 {
     use AuthorizesPlatform;
 
+    /** Set only by system(): the approval comes from a verified online payment, not from a person. */
+    protected bool $trusted = false;
+
+    public function system(SubscriptionPayment $payment, ?string $note = null): SubscriptionPayment
+    {
+        $this->trusted = true;
+        try {
+            return $this($payment, $note);
+        } finally {
+            $this->trusted = false;
+        }
+    }
+
     /**
      * Accepts a reported payment: extends the subscription, issues the invoice, records history.
      * A payment can be approved exactly once (the row is locked and its status re-checked).
@@ -25,7 +38,9 @@ class ApproveSubscriptionPayment
      */
     public function __invoke(SubscriptionPayment $payment, ?string $note = null): SubscriptionPayment
     {
-        $this->authorizePlatform('payments.approve');
+        if (! $this->trusted) {
+            $this->authorizePlatform('payments.approve');
+        }
 
         $payment = DB::transaction(function () use ($payment, $note) {
             $payment = SubscriptionPayment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
@@ -72,6 +87,8 @@ class ApproveSubscriptionPayment
             ]);
             $invoice->forceFill(['invoice_no' => 'INV-'.str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT)])->save();
 
+            $this->rewardReferrer($s->library_id, $payment);
+
             SubscriptionEvent::log($s, 'payment_approved', $from, $s->status, $note, [
                 'payment' => $payment->id, 'amount' => (string) $payment->amount, 'period' => [$start->toDateString(), $end->toDateString()],
                 'invoice' => $invoice->invoice_no,
@@ -92,5 +109,27 @@ class ApproveSubscriptionPayment
             route('app.subscription.index', ['library' => $payment->library->slug]));
 
         return $payment;
+    }
+
+    /** The referring library earns its reward the first time a library it referred has a payment approved. */
+    protected function rewardReferrer(int $libraryId, SubscriptionPayment $payment): void
+    {
+        $referred = \App\Models\Library::find($libraryId);
+        $reward = (int) \App\Support\BillingSettings::get('referral_reward_coins');
+        if (! $referred?->referred_by_id || $reward < 1 || ! \App\Support\BillingSettings::get('referral_enabled')) {
+            return;
+        }
+        if (\App\Models\ReferralCoin::where('library_id', $referred->referred_by_id)->where('referred_library_id', $referred->id)->where('kind', 'earned')->exists()) {
+            return;
+        }
+
+        \App\Models\ReferralCoin::create([
+            'library_id' => $referred->referred_by_id, 'coins' => $reward, 'kind' => 'earned', 'description' => "{$referred->name} subscribed",
+            'referred_library_id' => $referred->id, 'subscription_payment_id' => $payment->id,
+        ]);
+
+        if ($referrer = \App\Models\Library::find($referred->referred_by_id)) {
+            Notifier::library($referrer, 'billing.view', 'referral.earned', "You earned {$reward} coins", "{$referred->name} subscribed using your referral.", route('app.refer.index', ['library' => $referrer->slug]));
+        }
     }
 }

@@ -269,11 +269,11 @@ class LibraryPagesTest extends TestCase
 
     public function test_home_redirects_by_role(): void
     {
-        $this->get('/')->assertRedirect("/app/{$this->library->slug}");
+        $this->get('/workspace')->assertRedirect("/app/{$this->library->slug}");
 
         $admin = User::factory()->create();
         $admin->forceFill(['is_super_admin' => true])->save();
-        $this->actingAs($admin->fresh())->get('/')->assertRedirect('/admin');
+        $this->actingAs($admin->fresh())->get('/workspace')->assertRedirect('/admin');
     }
 
     public function test_password_setup_link_lets_the_owner_choose_a_password(): void

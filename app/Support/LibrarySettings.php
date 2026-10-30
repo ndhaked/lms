@@ -54,6 +54,10 @@ class LibrarySettings
         // notifications
         'notify_expiry' => true,
         'notify_dues' => true,
+        // automatic SMS / WhatsApp: event => ['sms' => bool, 'whatsapp' => bool]; everything is off until the library switches it on
+        'message_triggers' => [],
+        // look
+        'theme' => '',                               // key of App\Support\Themes::ALL; empty = the platform default
         // data
         'export_enabled' => true,
     ];

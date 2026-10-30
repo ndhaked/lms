@@ -37,7 +37,7 @@ new #[Layout('layouts::panel')] class extends Component
     #[Computed]
     public function student(): Student
     {
-        return Student::with(['memberships.plan', 'activeAllocation.seat.hall', 'allocations.seat'])->findOrFail($this->studentId);
+        return Student::with(['memberships.plan', 'activeAllocation.seat.hall', 'latestAllocation.seat.hall', 'allocations.seat'])->findOrFail($this->studentId);
     }
 }
 ?>
@@ -98,7 +98,10 @@ new #[Layout('layouts::panel')] class extends Component
                 <h3 class="mb-1 text-xs font-medium text-gray-500">Seat</h3>
                 @if ($s->activeAllocation)
                     <p class="text-sm font-semibold text-gray-900">{{ $s->activeAllocation->seat->code }}</p>
-                    <p class="text-xs text-gray-500">{{ $s->activeAllocation->seat->hall?->name }} · since {{ $s->activeAllocation->allocated_at->format('d M Y') }}</p>
+                    <p class="text-xs text-gray-500">{{ $s->activeAllocation->seat->hall?->name }} · {{ \App\Models\SeatAllocation::SHIFTS[$s->activeAllocation->shift] ?? '' }} shift · since {{ $s->activeAllocation->allocated_at->format('d M Y') }}</p>
+                @elseif ($s->latestAllocation)
+                    <p class="text-sm text-gray-400">Not allocated now</p>
+                    <p class="text-xs text-gray-500">Last seat {{ $s->latestAllocation->seat?->code }} ({{ $s->latestAllocation->seat?->hall?->name }}), {{ $s->latestAllocation->allocated_at->format('d M Y') }} to {{ $s->latestAllocation->released_at?->format('d M Y') }}@if ($s->latestAllocation->release_reason) · {{ str_replace('_', ' ', $s->latestAllocation->release_reason) }}@endif</p>
                 @else
                     <p class="text-sm text-gray-400">Not allocated</p>
                 @endif
@@ -131,7 +134,7 @@ new #[Layout('layouts::panel')] class extends Component
             <tbody>
                 @forelse ($s->allocations->sortByDesc('allocated_at') as $a)
                     <tr class="border-t border-gray-100" wire:key="al-{{ $a->id }}">
-                        <td class="py-2 font-medium">{{ $a->seat->code }}</td><td class="py-2">{{ $a->allocated_at->format('d M Y, H:i') }}</td>
+                        <td class="py-2 font-medium">{{ $a->seat->code }} <span class="text-xs font-normal text-gray-400">{{ \App\Models\SeatAllocation::SHIFTS[$a->shift] ?? '' }}</span></td><td class="py-2">{{ $a->allocated_at->format('d M Y, H:i') }}</td>
                         <td class="py-2">{{ $a->released_at?->format('d M Y, H:i') ?? 'Current' }}</td><td class="py-2 text-gray-500">{{ $a->release_reason ? str_replace('_', ' ', $a->release_reason) : '—' }}</td>
                     </tr>
                 @empty

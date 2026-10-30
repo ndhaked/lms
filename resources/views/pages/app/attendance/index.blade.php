@@ -270,7 +270,7 @@ new #[Layout('layouts::panel')] class extends Component
                                 <td class="px-4 py-3">{{ $a->checked_in_at->format('d M Y, H:i') }}</td>
                                 <td class="px-4 py-3">{{ $a->checked_out_at?->format('d M Y, H:i') ?? 'Inside' }}</td>
                                 <td class="px-4 py-3 text-gray-600">{{ $a->minutes() !== null ? intdiv($a->minutes(), 60).'h '.($a->minutes() % 60).'m' : '—' }}</td>
-                                <td class="px-4 py-3 text-xs text-gray-500">{{ $a->checkedInBy?->name ?? '—' }}@if ($a->corrections->isNotEmpty()) <x-ui.badge color="amber" class="ml-1" title="{{ $a->corrections->last()->reason }}">Corrected</x-ui.badge>@endif</td>
+                                <td class="px-4 py-3 text-xs text-gray-500">{{ $a->source === 'biometric' ? 'Biometric device' : ($a->checkedInBy?->name ?? '—') }}@if ($a->corrections->isNotEmpty()) <x-ui.badge color="amber" class="ml-1" title="{{ $a->corrections->last()->reason }}">Corrected</x-ui.badge>@endif</td>
                                 <td class="px-4 py-3 text-right">@if ($canCorrect)<button wire:click="startCorrect({{ $a->id }})" class="font-medium text-gray-500 hover:text-gray-800">Correct</button>@endif</td>
                             </tr>
                         @empty

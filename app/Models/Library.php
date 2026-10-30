@@ -37,6 +37,16 @@ class Library extends Model
         return ['activated_at' => 'datetime'];
     }
 
+    public function referrer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(self::class, 'referred_by_id');
+    }
+
+    public function referrals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(self::class, 'referred_by_id');
+    }
+
     protected static function booted(): void
     {
         static::creating(function (Library $library) {
@@ -61,6 +71,11 @@ class Library extends Model
         }
 
         return $slug;
+    }
+
+    public function biometricDevices(): HasMany
+    {
+        return $this->hasMany(BiometricDevice::class);
     }
 
     public function users(): BelongsToMany

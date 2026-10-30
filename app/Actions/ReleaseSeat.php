@@ -24,11 +24,15 @@ class ReleaseSeat
                 'release_reason' => $reason,
                 'released_by' => auth()->id(),
                 'active_seat_id' => null,
+                'active_slot' => null,
                 'active_student_id' => null,
             ]);
 
             // A seat put into maintenance/unavailable meanwhile keeps that status.
-            Seat::query()->whereKey($allocation->seat_id)->where('status', Seat::OCCUPIED)->update(['status' => Seat::AVAILABLE]);
+            // ...and a seat another shift still holds stays occupied.
+            if (! SeatAllocation::query()->where('seat_id', $allocation->seat_id)->whereNull('released_at')->exists()) {
+                Seat::query()->whereKey($allocation->seat_id)->where('status', Seat::OCCUPIED)->update(['status' => Seat::AVAILABLE]);
+            }
 
             AuditLog::record('seat.released', $allocation, ['reason' => $reason]);
 

@@ -80,7 +80,7 @@
             <a href="#faq" class="hover:text-gray-900">FAQ</a>
         </nav>
         <div class="flex items-center gap-2">
-            <a href="{{ route('login') }}" class="hidden rounded-lg px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 sm:inline-block">Log in</a>
+            <a href="{{ auth()->check() ? route('workspace') : route('login') }}" class="hidden rounded-lg px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 sm:inline-block">{{ auth()->check() ? 'Dashboard' : 'Log in' }}</a>
             <a href="{{ url('/') }}?type=demo#offer" class="hidden rounded-lg border border-gray-300 px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 md:inline-block">Book a demo</a>
             <a href="#offer" class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">{{ $offer ? 'Start '.$offer.' free' : 'Get started' }}</a>
             <button type="button" class="rounded-lg p-2 text-gray-600 hover:bg-gray-100 lg:hidden" @click="open = !open" aria-label="Menu"><x-lm.icon name="menu" class="h-6 w-6" /></button>
@@ -88,7 +88,7 @@
     </div>
     <div x-show="open" x-cloak class="border-t border-gray-100 bg-white px-4 py-3 text-sm font-medium text-gray-700 lg:hidden" @click="open = false">
         <a href="#features" class="block py-2">Features</a><a href="#books" class="block py-2">Library & books</a><a href="#how" class="block py-2">How it works</a>
-        <a href="#pricing" class="block py-2">Pricing</a><a href="#faq" class="block py-2">FAQ</a><a href="{{ route('login') }}" class="block py-2 font-semibold">Log in</a>
+        <a href="#pricing" class="block py-2">Pricing</a><a href="#faq" class="block py-2">FAQ</a><a href="{{ auth()->check() ? route('workspace') : route('login') }}" class="block py-2 font-semibold">{{ auth()->check() ? 'Dashboard' : 'Log in' }}</a>
     </div>
 </header>
 
@@ -348,7 +348,7 @@
                     <li><a href="#books" class="hover:text-white">Library &amp; books</a></li>
                     <li><a href="#pricing" class="hover:text-white">Pricing</a></li>
                     <li><a href="#faq" class="hover:text-white">FAQ</a></li>
-                    <li><a href="{{ route('login') }}" class="hover:text-white">Log in</a></li>
+                    <li><a href="{{ auth()->check() ? route('workspace') : route('login') }}" class="hover:text-white">{{ auth()->check() ? 'Dashboard' : 'Log in' }}</a></li>
                 </ul>
             </div>
 

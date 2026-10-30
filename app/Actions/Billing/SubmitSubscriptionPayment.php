@@ -33,6 +33,7 @@ class SubmitSubscriptionPayment
         CarbonInterface $paidOn,
         ?string $note = null,
         array $files = [],
+        int $coins = 0,
     ): SubscriptionPayment {
         abort_unless(auth()->user()?->can('billing.manage'), 403);
 
@@ -48,6 +49,16 @@ class SubmitSubscriptionPayment
         $plan->priceFor($cycle) ?? throw new BusinessRuleException("{$plan->name} is not sold on a {$cycle} cycle.");
         $quote = \App\Support\Pricing::quote($library->id, $plan, $cycle);
         $price = $quote['total'];
+
+        // Referral coins pay for part of the price.
+        if ($coins > 0) {
+            if (! BillingSettings::get('referral_enabled') || $coins > \App\Models\ReferralCoin::maxRedeemable($library->id, (float) $price)) {
+                throw new BusinessRuleException('You cannot use that many coins on this plan.');
+            }
+            $off = number_format($coins * \App\Models\ReferralCoin::coinValue(), 2, '.', '');
+            $price = bcsub($price, $off, 2);
+            $quote['lines'][] = ['label' => "Referral coins ({$coins})", 'amount' => '-'.$off];
+        }
 
         $amount = number_format((float) $amount, 2, '.', '');
         $reference = trim($reference);
@@ -71,7 +82,7 @@ class SubmitSubscriptionPayment
             throw new BusinessRuleException('Attach proof of payment (a screenshot or receipt).');
         }
 
-        $payment = DB::transaction(function () use ($library, $subscription, $plan, $cycle, $reference, $amount, $method, $paidOn, $note, $files, $quote) {
+        $payment = DB::transaction(function () use ($library, $subscription, $plan, $cycle, $reference, $amount, $method, $paidOn, $note, $files, $quote, $coins) {
             // Serialise submissions per subscription so two tabs cannot both slip through the checks below.
             Subscription::query()->whereKey($subscription->id)->lockForUpdate()->firstOrFail();
 
@@ -85,8 +96,13 @@ class SubmitSubscriptionPayment
             $payment = SubscriptionPayment::create([
                 'subscription_id' => $subscription->id, 'library_id' => $library->id, 'subscription_plan_id' => $plan->id,
                 'billing_cycle' => $cycle, 'reference' => $reference, 'amount' => $amount, 'breakdown' => $quote['lines'], 'method' => $method,
-                'paid_on' => $paidOn->toDateString(), 'note' => $note ?: null, 'submitted_by' => auth()->id(),
+                'paid_on' => $paidOn->toDateString(), 'note' => $note ?: null, 'submitted_by' => auth()->id(), 'coins_used' => $coins,
             ]);
+
+            if ($coins > 0) {
+                // reserve the coins now; they come back if the payment is rejected
+                \App\Models\ReferralCoin::create(['library_id' => $library->id, 'coins' => -$coins, 'kind' => 'redeemed', 'description' => 'Used on a subscription payment', 'subscription_payment_id' => $payment->id]);
+            }
 
             foreach ($files as $file) {
                 $payment->proofs()->create([

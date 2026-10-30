@@ -10,6 +10,9 @@ class SeatAllocation extends Model
 {
     use BelongsToLibrary;
 
+    /** Shifts a seat can be shared by. A full-day allocation blocks every shift. */
+    public const SHIFTS = ['morning' => 'Morning', 'afternoon' => 'Afternoon', 'evening' => 'Evening', 'night' => 'Night', 'fullday' => 'Fullday'];
+
     protected $guarded = ['id', 'library_id'];
 
     protected function casts(): array

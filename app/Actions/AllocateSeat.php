@@ -12,16 +12,25 @@ use Illuminate\Support\Facades\DB;
 
 class AllocateSeat
 {
-    public function __invoke(Seat $seat, Student $student): SeatAllocation
+    public function __invoke(Seat $seat, Student $student, string $shift = 'fullday'): SeatAllocation
     {
         try {
-            return DB::transaction(function () use ($seat, $student) {
+            return DB::transaction(function () use ($seat, $student, $shift) {
                 // Lock both rows so two staff members cannot allocate the same seat at the same moment.
                 $seat = Seat::query()->whereKey($seat->getKey())->lockForUpdate()->firstOrFail();
                 $student = Student::query()->whereKey($student->getKey())->lockForUpdate()->firstOrFail();
 
-                if ($seat->status !== Seat::AVAILABLE) {
+                if (! isset(SeatAllocation::SHIFTS[$shift])) {
+                    throw new BusinessRuleException('Choose a valid shift.');
+                }
+                if (! in_array($seat->status, [Seat::AVAILABLE, Seat::OCCUPIED], true)) {
                     throw new BusinessRuleException("Seat {$seat->code} is not available (status: {$seat->status}).");
+                }
+                // Occupied only means someone has a shift; the seat is still free for the other shifts.
+                $clash = SeatAllocation::query()->where('seat_id', $seat->id)->whereNull('released_at')
+                    ->when($shift !== 'fullday', fn ($q) => $q->whereIn('shift', ['fullday', $shift]))->exists();
+                if ($clash) {
+                    throw new BusinessRuleException("Seat {$seat->code} is not available for ".(SeatAllocation::SHIFTS[$shift]).'.');
                 }
                 if ($student->status !== Student::ACTIVE) {
                     throw new BusinessRuleException("{$student->name} is {$student->status} and cannot be allocated a seat.");
@@ -39,6 +48,8 @@ class AllocateSeat
                     'seat_id' => $seat->id,
                     'student_id' => $student->id,
                     'student_membership_id' => $membership->id,
+                    'shift' => $shift,
+                    'active_slot' => "{$seat->id}-{$shift}",
                     'allocated_at' => now(),
                     'allocated_by' => auth()->id(),
                     'active_seat_id' => $seat->id,

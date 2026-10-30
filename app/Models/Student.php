@@ -19,12 +19,12 @@ class Student extends Model
 
     protected $fillable = [
         'name', 'phone', 'email', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-        'registered_on', 'photo_path', 'notes', 'status', 'member_type',
+        'registered_on', 'photo_path', 'notes', 'status', 'member_type', 'is_vip', 'biometric_id',
     ];
 
     protected function casts(): array
     {
-        return ['registered_on' => 'date'];
+        return ['registered_on' => 'date', 'is_vip' => 'boolean'];
     }
 
     protected static function booted(): void
@@ -61,6 +61,12 @@ class Student extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(SeatAllocation::class);
+    }
+
+    /** The seat the student used most recently, whether or not it is still theirs. */
+    public function latestAllocation(): HasOne
+    {
+        return $this->hasOne(SeatAllocation::class)->ofMany(['allocated_at' => 'max', 'id' => 'max'], 'max');
     }
 
     public function activeAllocation(): HasOne

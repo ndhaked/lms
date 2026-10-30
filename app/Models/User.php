@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, HasRoles, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = ['name', 'email', 'phone', 'password'];
 
@@ -56,6 +57,12 @@ class User extends Authenticatable
             ->wherePivot('is_active', true)
             ->where('libraries.status', '!=', Library::INACTIVE)
             ->get();
+    }
+
+    /** Phones registered for push notifications (mobile app). */
+    public function devices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
     }
 
     public function canAccessLibrary(Library $library): bool

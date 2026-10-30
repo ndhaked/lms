@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 
 // The public website for visitors; signed-in people are sent to their workspace.
 Route::get('/', HomeController::class)->name('home');
+Route::get('/workspace', [SessionController::class, 'home'])->middleware('auth')->name('workspace');
 
 /*
 |--------------------------------------------------------------------------
@@ -44,8 +45,21 @@ Route::middleware('auth')->group(function () {
 | Platform (Super Admin). Each area also needs its own platform permission.
 |--------------------------------------------------------------------------
 */
+// Razorpay calls this by itself: no login, no CSRF token; it is trusted only with a valid signature (see the controller).
+// Swagger page for the mobile API (developers): try every endpoint with a token from /api/v1/auth/login.
+Route::get('/api/docs', [\App\Http\Controllers\Api\DocsController::class, 'ui'])->name('api.docs');
+Route::get('/api/docs/openapi.json', [\App\Http\Controllers\Api\DocsController::class, 'spec'])->name('api.docs.spec');
+
+// Attendance machines (no login): ZKTeco / eSSL / Realtime push protocol, and a JSON endpoint using a per-device token.
+Route::match(['get', 'post'], '/iclock/cdata', [\App\Http\Controllers\BiometricController::class, 'cdata'])->middleware('throttle:600,1');
+Route::get('/iclock/getrequest', [\App\Http\Controllers\BiometricController::class, 'getRequest'])->middleware('throttle:600,1');
+Route::post('/iclock/devicecmd', [\App\Http\Controllers\BiometricController::class, 'deviceCommand'])->middleware('throttle:600,1');
+Route::post('/api/biometric/punches', [\App\Http\Controllers\BiometricController::class, 'punches'])->middleware('throttle:600,1')->name('biometric.punches');
+Route::post('/webhooks/razorpay', \App\Http\Controllers\RazorpayWebhookController::class)->middleware('throttle:240,1')->name('webhooks.razorpay');
+
 Route::middleware(['auth', 'super-admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::livewire('/', 'pages::admin.dashboard')->name('dashboard');
+    Route::livewire('/profile', 'pages::account.profile')->name('profile.edit');
 
     Route::middleware('platform:libraries.manage')->group(function () {
         Route::livewire('/leads', 'pages::admin.leads.index')->name('leads.index');
@@ -66,10 +80,14 @@ Route::middleware(['auth', 'super-admin'])->prefix('admin')->name('admin.')->gro
 
     Route::middleware('platform:payments.approve')->group(function () {
         Route::livewire('/payment-approvals', 'pages::admin.payment-approvals.index')->name('payment-approvals.index');
+        Route::livewire('/credits', 'pages::admin.credits.index')->name('credits.index');
+        Route::livewire('/message-logs', 'pages::admin.message-logs.index')->name('message-logs.index');
+        Route::livewire('/online-payments', 'pages::admin.online-payments.index')->name('online-payments.index');
     });
 
     // Proofs and invoices: open to anyone who can handle payments or subscriptions.
     Route::get('/subscription-proofs/{proof}', [SubscriptionProofController::class, 'platform'])->name('subscription-proofs.show');
+    Route::get('/credit-proofs/{proof}', [\App\Http\Controllers\CreditProofController::class, 'platform'])->name('credit-proofs.show');
     Route::get('/subscription-invoices/{invoice}', [SubscriptionInvoiceController::class, 'platform'])->name('subscription-invoices.show');
 
     Route::middleware('platform:audit.view')->group(function () {
@@ -102,11 +120,23 @@ Route::middleware(['auth', 'super-admin'])->prefix('admin')->name('admin.')->gro
 */
 Route::middleware(['auth', 'library', 'subscription'])->prefix('app/{library}')->name('app.')->group(function () {
     Route::livewire('/', 'pages::app.dashboard')->name('dashboard');
+    Route::livewire('/insights', 'pages::app.insights.index')->name('insights');
 
     // billing pages stay reachable even when the subscription is restricted
     Route::livewire('/subscription', 'pages::app.subscription.index')->name('subscription.index');
+    Route::livewire('/subscription/plans', 'pages::app.subscription.plans')->name('subscription.plans');
+    Route::livewire('/subscription/checkout', 'pages::app.subscription.checkout')->name('subscription.checkout');
+    Route::livewire('/subscription/credits-checkout', 'pages::app.subscription.credits-checkout')->name('subscription.credits-checkout');
+    Route::livewire('/profile', 'pages::account.profile')->name('profile.edit');
+    Route::livewire('/refer', 'pages::app.refer.index')->name('refer.index');
+    Route::livewire('/messages', 'pages::app.messages.index')->name('messages.index');
+    Route::livewire('/templates', 'pages::app.templates.index')->name('templates.index');
+    Route::livewire('/help', 'pages::app.help.index')->name('help.index');
+    Route::livewire('/contact', 'pages::app.contact.index')->name('contact.index');
+    Route::livewire('/qr-code', 'pages::app.qr.index')->name('qr.index');
     Route::get('/subscription/invoices/{invoice}', [SubscriptionInvoiceController::class, 'library'])->name('subscription.invoice');
     Route::get('/subscription/proofs/{proof}', [SubscriptionProofController::class, 'library'])->name('subscription.proof');
+    Route::get('/subscription/credit-proofs/{proof}', [\App\Http\Controllers\CreditProofController::class, 'library'])->name('subscription.credit-proof');
 
     // student self-service (the student is always the signed-in login's own record)
     Route::livewire('/my', 'pages::app.my.index')->name('my.index');
@@ -132,6 +162,7 @@ Route::middleware(['auth', 'library', 'subscription'])->prefix('app/{library}')-
     // optional modules, switched on or off by the library's plan
     Route::middleware('module:attendance')->group(function () {
         Route::livewire('/attendance', 'pages::app.attendance.index')->name('attendance.index');
+        Route::livewire('/biometric', 'pages::app.biometric.index')->name('biometric.index');
     });
     Route::middleware('module:expenses')->group(function () {
         Route::livewire('/expenses', 'pages::app.expenses.index')->name('expenses.index');
@@ -181,4 +212,5 @@ Route::middleware(['auth', 'library', 'subscription'])->prefix('app/{library}')-
 });
 
 // Old bookmark /app → send people to their library.
-Route::get('/app', fn () => redirect()->route('home'))->middleware('auth');
+Route::get('/app', fn () => redirect()->route('workspace'))->middleware('auth');
+

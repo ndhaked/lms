@@ -25,6 +25,10 @@ class ReviewSubscriptionPayment
 
         $payment = $this->transition($payment, SubscriptionPayment::REJECTED, $reason, [SubscriptionPayment::PENDING, SubscriptionPayment::INFO_REQUESTED]);
 
+        if ($payment->coins_used > 0) {
+            \App\Models\ReferralCoin::create(['library_id' => $payment->library_id, 'coins' => $payment->coins_used, 'kind' => 'returned', 'description' => 'Payment rejected: coins returned', 'subscription_payment_id' => $payment->id]);
+        }
+
         Notifier::library($payment->library, 'billing.view', 'subscription.payment_rejected', 'Subscription payment rejected', $reason,
             route('app.subscription.index', ['library' => $payment->library->slug]));
 

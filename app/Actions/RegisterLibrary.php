@@ -27,6 +27,7 @@ class RegisterLibrary
             }
 
             app(ProvisionLibraryRoles::class)($library);
+            \App\Support\MessageTemplates::seedWhatsapp($library);
 
             // Reuse an existing login: one person may own or work in several libraries.
             $user = User::where('email', $owner['email'])->first();

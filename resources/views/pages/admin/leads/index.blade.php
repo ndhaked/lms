@@ -116,7 +116,7 @@ new #[Layout('layouts::panel')] class extends Component
             <tbody>
                 @forelse ($this->rows as $l)
                     <tr class="border-t border-gray-100 align-top" wire:key="ld-{{ $l->id }}">
-                        <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ $l->library_name }}</p><p class="text-xs text-gray-500">{{ collect([$l->city, $l->students ? \App\Models\Lead::SIZES[$l->students] ?? $l->students : null])->filter()->implode(' · ') }}</p>@if ($l->message)<p class="mt-1 max-w-xs text-xs italic text-gray-500">“{{ \Illuminate\Support\Str::limit($l->message, 140) }}”</p>@endif</td>
+                        <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ $l->library_name }}</p><p class="text-xs text-gray-500">{{ collect([$l->city, $l->students ? \App\Models\Lead::SIZES[$l->students] ?? $l->students : null])->filter()->implode(' · ') }}</p>@if ($l->referral_code)<p class="mt-1 text-xs font-medium text-violet-700">Referred by {{ $l->referral_code }}</p>@endif @if ($l->message)<p class="mt-1 max-w-xs text-xs italic text-gray-500">“{{ \Illuminate\Support\Str::limit($l->message, 140) }}”</p>@endif</td>
                         <td class="px-4 py-3"><p class="text-gray-900">{{ $l->name }}</p><a href="tel:{{ $l->phone }}" class="block text-xs text-brand-700 hover:underline">{{ $l->phone }}</a><a href="mailto:{{ $l->email }}" class="block text-xs text-gray-500 hover:underline">{{ $l->email }}</a></td>
                         <td class="px-4 py-3"><x-ui.badge :color="$l->type === 'demo' ? 'blue' : 'green'">{{ \App\Models\Lead::TYPES[$l->type] }}</x-ui.badge>
                             @if ($l->plan) <p class="mt-1 text-xs text-gray-500">{{ $l->plan->name }}</p> @endif

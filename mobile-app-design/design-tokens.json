@@ -1,0 +1,34 @@
+{
+  "$description": "LMS mobile app design tokens. Same brand as the web panel.",
+  "color": {
+    "brand": { "50": "#effaf3", "100": "#d8f3e2", "200": "#b4e6c9", "300": "#82d3a8", "400": "#52bb83", "500": "#34a96b", "600": "#2f9e5f", "700": "#237a49", "800": "#1f613c", "900": "#1b5033" },
+    "ink": { "primary": "#10201a", "secondary": "#3d4d45", "muted": "#6b7a72", "faint": "#9aa8a0" },
+    "surface": { "page": "#f5f8f6", "card": "#ffffff", "line": "#e3e9e5", "lineSoft": "#eef2ef" },
+    "status": {
+      "danger": { "bg": "#fef2f2", "fg": "#b91c1c", "solid": "#dc2626" },
+      "warning": { "bg": "#fffbeb", "fg": "#b45309", "solid": "#f59e0b" },
+      "info": { "bg": "#eff6ff", "fg": "#1d4ed8", "solid": "#3b82f6" },
+      "special": { "bg": "#f5f3ff", "fg": "#6d28d9", "solid": "#8b5cf6" },
+      "success": { "bg": "#d8f3e2", "fg": "#1f613c", "solid": "#2f9e5f" }
+    }
+  },
+  "typography": {
+    "family": "Inter",
+    "fallback": "system-ui, -apple-system, Roboto, sans-serif",
+    "size": { "caption": 11, "small": 12, "body": 14, "title": 15, "screenTitle": 20, "number": 22, "numberLarge": 34 },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700, "heavy": 800 },
+    "numbers": "tabular"
+  },
+  "spacing": { "unit": 4, "screenPadding": 16, "cardPadding": 16, "gap": 12, "sectionGap": 20 },
+  "radius": { "sm": 8, "md": 12, "lg": 16, "xl": 24, "pill": 999 },
+  "elevation": {
+    "card": "0 1px 2px rgba(16,32,26,.06), 0 1px 3px rgba(16,32,26,.04)",
+    "sheet": "0 8px 24px rgba(16,32,26,.10)"
+  },
+  "size": { "touchTarget": 44, "button": 48, "input": 48, "iconButton": 40, "tabBar": 56, "statusBar": 44, "referenceDevice": { "width": 390, "height": 844 } },
+  "motion": { "fast": 150, "base": 200, "easing": "ease-out" },
+  "navigation": {
+    "student": ["Home", "Attendance", "Payments", "Books", "Me"],
+    "owner": ["Home", "Students", "Attendance", "Money", "More"]
+  }
+}

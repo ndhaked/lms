@@ -25,6 +25,7 @@ class LeadForm extends Component
     public string $preferred_date = '';
     public string $preferred_time = '';
     public string $message = '';
+    public string $referral = '';
     public string $website = '';            // honeypot: people never see or fill this
 
     public bool $done = false;
@@ -32,6 +33,11 @@ class LeadForm extends Component
 
     public function mount(): void
     {
+        $ref = strtoupper((string) (request()->query('ref') ?: session('ref', '')));
+        if ($ref !== '' && \App\Models\Library::where('code', $ref)->exists()) {
+            $this->referral = $ref;
+        }
+
         $plan = (string) request()->query('plan', '');
         if (ctype_digit($plan) && SubscriptionPlan::where('status', 'active')->whereKey((int) $plan)->exists()) {
             $this->plan = $plan;
@@ -105,7 +111,7 @@ class LeadForm extends Component
             'type' => $type, 'name' => trim($data['name']), 'email' => $email, 'phone' => trim($data['phone']), 'library_name' => trim($data['library_name']),
             'city' => $data['city'] ?: null, 'students' => $data['students'] ?: null, 'subscription_plan_id' => $plan?->id,
             'preferred_date' => $type === 'demo' ? ($data['preferred_date'] ?: null) : null, 'preferred_time' => $type === 'demo' ? ($data['preferred_time'] ?: null) : null,
-            'message' => $data['message'] ?: null, 'ip' => request()->ip(), 'user_agent' => mb_substr((string) request()->userAgent(), 0, 200),
+            'message' => $data['message'] ?: null, 'referral_code' => $this->referral !== '' && \App\Models\Library::where('code', $this->referral)->exists() ? $this->referral : null, 'ip' => request()->ip(), 'user_agent' => mb_substr((string) request()->userAgent(), 0, 200),
         ]);
 
         $what = $type === 'demo' ? 'booked a demo' : 'asked for the free months';

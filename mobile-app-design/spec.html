@@ -1,0 +1,545 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LMS app developer spec</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"><style>:root{--bg:#fff;--ink:#10201a;--ink2:#4c5d54;--line:#dfe7e2;--code:#f1f5f3;--brand:#237a49}@media (prefers-color-scheme:dark){:root{--bg:#0e1814;--ink:#e8f1ec;--ink2:#9db0a6;--line:#27382f;--code:#15241d;--brand:#82d3a8}}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.6;padding:0 max(16px,env(safe-area-inset-left,0px))}main{max-width:900px;margin:0 auto;padding:32px 0 80px}h1{font-size:34px;letter-spacing:-.02em;line-height:1.15}h2{font-size:24px;margin-top:2.2em;border-top:1px solid var(--line);padding-top:1em}h3{font-size:18px;margin-top:1.6em}a{color:var(--brand)}table{border-collapse:collapse;width:100%;font-size:13.5px;display:block;overflow-x:auto}th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}th{background:var(--code)}code{background:var(--code);padding:1px 5px;border-radius:5px;font-size:.92em}pre{background:var(--code);padding:14px;border-radius:12px;overflow-x:auto}pre code{background:none;padding:0}blockquote{margin:1em 0;padding:.2em 1em;border-left:4px solid var(--brand);color:var(--ink2)}</style></head><body><main><p><a href="#" onclick="history.back();return false">← Back</a></p><h1>LMS mobile app: developer spec</h1>
+<p>One mobile app for <strong>library owners/staff</strong> and <strong>students</strong>. The user signs in once; the app shows the workspace that matches their role in the selected library. The clickable design is in <code>index.html</code> (open it in a browser, or use the shared link).</p>
+<h2>1. How to use this package</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.html</code></td>
+<td>Hub: every screen as a thumbnail, grouped by role. Click a phone to open it full size.</td>
+</tr>
+<tr>
+<td><code>common/</code>, <code>student/</code>, <code>owner/</code></td>
+<td>One HTML file per screen. Static, no build step. Tabs, rows and buttons link to the next screen.</td>
+</tr>
+<tr>
+<td><code>assets/app.css</code></td>
+<td>The whole design system (colors, type, spacing, components). Class names are the component names.</td>
+</tr>
+<tr>
+<td><code>design-tokens.json</code></td>
+<td>The same tokens as data, for Flutter/React Native/Swift/Kotlin theme files.</td>
+</tr>
+<tr>
+<td><code>SPEC.md</code> / <code>spec.html</code></td>
+<td>This document.</td>
+</tr>
+</tbody>
+</table>
+<p>Reference device: <strong>390 × 844</strong> (iPhone 14 / Pixel class). On a real phone the HTML fills the screen. Sheets open with a <code>#anchor</code> link (CSS only) to show the bottom-sheet design.</p>
+<h2>2. What exists today (honest status)</h2>
+<ul>
+<li>The <strong>web panel</strong> (Laravel) is finished and has everything the screens need: students, memberships, seats, attendance, payments and dues, expenses, reports, books and lending, fines, reservations, e-books, notifications, student portal.</li>
+<li><strong>There is no mobile API yet.</strong> The panel is server-rendered. Section 8 lists the REST endpoints the app needs; they must be built (Laravel Sanctum token auth) before the app can run on real data.</li>
+<li><strong>Fingerprint / face / card attendance is built</strong> (30 Oct 2026). ZKTeco, eSSL and Realtime machines push punches to the server; staff can still check students in and out by hand. See section 7 for the two different things people call &quot;biometric&quot;.</li>
+</ul>
+<h2>3. Roles: who sees what</h2>
+<p>The app does not decide permissions. The server returns the user's role and permission list for the chosen library and the app only shows what is allowed. Hiding is cosmetic; every API call is checked again on the server.</p>
+<table>
+<thead>
+<tr>
+<th>Server role (per library)</th>
+<th>App workspace</th>
+<th>Tabs</th>
+<th>Typical permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Student</td>
+<td>Student</td>
+<td>Home · Attendance · Payments · Books · Me</td>
+<td><code>self.view</code>, <code>ebooks.read</code></td>
+</tr>
+<tr>
+<td>Library Owner</td>
+<td>Owner</td>
+<td>Home · Students · Attendance · Money · Menu</td>
+<td>everything in the library</td>
+</tr>
+<tr>
+<td>Manager</td>
+<td>Owner (fewer items)</td>
+<td>same</td>
+<td>students, memberships, attendance, books, circulation</td>
+</tr>
+<tr>
+<td>Receptionist</td>
+<td>Owner (desk)</td>
+<td>same</td>
+<td>students (view/create), attendance, record payments, issue/return</td>
+</tr>
+<tr>
+<td>Accountant</td>
+<td>Owner (money)</td>
+<td>same</td>
+<td>payments, refunds, expenses, financial reports</td>
+</tr>
+<tr>
+<td>Floor supervisor</td>
+<td>Owner (floor)</td>
+<td>Attendance, Seats</td>
+<td>attendance, seats</td>
+</tr>
+</tbody>
+</table>
+<p>A person can hold different roles in different libraries (owner in one, student in another). The <em>Choose library</em> screen appears only when there is more than one; the chosen library sets the workspace.</p>
+<p>Library state that changes the UI (returned in the <code>/me</code> payload):</p>
+<ul>
+<li><code>modules</code>: <code>books</code>, <code>ebooks</code>, <code>attendance</code>, <code>expenses</code>, <code>reports</code>, <code>exports</code>. Hide tabs and menu items for modules the library does not have.</li>
+<li><code>read_only: true</code>: the subscription ended and the library chose read-only. Show the &quot;Library is read-only&quot; banner, disable every write action.</li>
+<li><code>subscription_state</code>: <code>full | warn | restricted | readonly</code>. <code>restricted</code> shows only a &quot;ask the owner to renew&quot; screen.</li>
+<li>Student features switched on by the library: <code>student_payment_submissions</code>, <code>student_can_renew</code>, <code>reservations_enabled</code>.</li>
+</ul>
+<h2>4. Navigation</h2>
+<pre><code>Splash → Login ──(biometric unlock)──┐
+          │                          ▼
+          └→ Choose library (if &gt;1) → Student tabs   or   Owner tabs
+Student tabs: Home · Attendance · Payments · Books · Me
+Owner tabs:   Home · Students · Attendance · Money · Menu
+Bell (top right) → Notifications on every main screen
+Push notification → opens the matching screen
+</code></pre>
+<h2>5. Screen inventory</h2>
+<p>Backend feature = what already exists in the web panel. API = proposed endpoint (section 8).</p>
+<h3>Shared</h3>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>File</th>
+<th>Backend feature</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Splash</td>
+<td><code>common/splash.html</code></td>
+<td>session check</td>
+<td><code>GET /me</code></td>
+</tr>
+<tr>
+<td>Sign in</td>
+<td><code>common/login.html</code></td>
+<td>login, rate limit</td>
+<td><code>POST /auth/login</code></td>
+</tr>
+<tr>
+<td>Forgot password</td>
+<td><code>common/forgot.html</code></td>
+<td>password reset email</td>
+<td><code>POST /auth/forgot</code></td>
+</tr>
+<tr>
+<td>Choose library</td>
+<td><code>common/choose-library.html</code></td>
+<td>library switcher</td>
+<td><code>GET /libraries</code></td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td><code>common/notifications.html</code></td>
+<td>in-app notifications</td>
+<td><code>GET /notifications</code>, <code>POST /notifications/read</code></td>
+</tr>
+<tr>
+<td>System states</td>
+<td><code>common/states.html</code></td>
+<td>offline, empty, error, read-only</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<h3>Student</h3>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>File</th>
+<th>Backend feature</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Home</td>
+<td><code>student/home.html</code></td>
+<td>membership, seat, dues, books out, today's attendance</td>
+<td><code>GET /student/home</code></td>
+</tr>
+<tr>
+<td>My ID</td>
+<td><code>student/id.html</code></td>
+<td>student code; rotating QR</td>
+<td><code>GET /student/id-token</code> (60 s signed token)</td>
+</tr>
+<tr>
+<td>Membership + renew</td>
+<td><code>student/membership.html</code></td>
+<td>memberships, renewal request</td>
+<td><code>GET /student/memberships</code>, <code>POST /student/renewal-requests</code></td>
+</tr>
+<tr>
+<td>Attendance</td>
+<td><code>student/attendance.html</code></td>
+<td>attendance history</td>
+<td><code>GET /student/attendance?month=</code></td>
+</tr>
+<tr>
+<td>Payments</td>
+<td><code>student/payments.html</code></td>
+<td>payments, dues, claims</td>
+<td><code>GET /student/payments</code></td>
+</tr>
+<tr>
+<td>Receipt</td>
+<td><code>student/payment-detail.html</code></td>
+<td>receipt PDF</td>
+<td><code>GET /student/payments/{id}/receipt</code> (pdf)</td>
+</tr>
+<tr>
+<td>I have paid</td>
+<td><code>student/i-have-paid.html</code></td>
+<td>student payment submissions</td>
+<td><code>POST /student/payment-submissions</code> (multipart)</td>
+</tr>
+<tr>
+<td>Books</td>
+<td><code>student/books.html</code></td>
+<td>loans, renew, reservations, fines</td>
+<td><code>GET /student/loans</code>, <code>POST /student/loans/{id}/renew</code>, <code>GET /student/reservations</code>, <code>DELETE /student/reservations/{id}</code></td>
+</tr>
+<tr>
+<td>Find a book</td>
+<td><code>student/book-search.html</code></td>
+<td>catalogue search, reserve</td>
+<td><code>GET /catalogue?q=</code>, <code>POST /student/reservations</code></td>
+</tr>
+<tr>
+<td>E-books</td>
+<td><code>student/ebooks.html</code></td>
+<td>e-book library</td>
+<td><code>GET /ebooks</code>, <code>GET /ebooks/{id}/file</code></td>
+</tr>
+<tr>
+<td>Me</td>
+<td><code>student/profile.html</code></td>
+<td>profile, settings</td>
+<td><code>GET /me</code>, <code>PATCH /me/settings</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Owner / staff</h3>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>File</th>
+<th>Backend feature</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dashboard</td>
+<td><code>owner/home.html</code></td>
+<td>dashboard cards and chart</td>
+<td><code>GET /owner/dashboard?year=</code></td>
+</tr>
+<tr>
+<td>Students</td>
+<td><code>owner/students.html</code></td>
+<td>list, search, filters</td>
+<td><code>GET /students?q=&amp;filter=</code></td>
+</tr>
+<tr>
+<td>Student detail</td>
+<td><code>owner/student-detail.html</code></td>
+<td>memberships, dues, seat, books</td>
+<td><code>GET /students/{id}</code></td>
+</tr>
+<tr>
+<td>Add student</td>
+<td><code>owner/student-add.html</code></td>
+<td>create (duplicate check)</td>
+<td><code>POST /students</code></td>
+</tr>
+<tr>
+<td>Attendance</td>
+<td><code>owner/attendance.html</code></td>
+<td>inside now, check-in/out</td>
+<td><code>GET /attendance/today</code>, <code>POST /attendance/check-in</code>, <code>POST /attendance/{id}/check-out</code></td>
+</tr>
+<tr>
+<td>Scanner</td>
+<td><code>owner/scan.html</code></td>
+<td>QR/barcode → student or book</td>
+<td><code>POST /scan/resolve</code></td>
+</tr>
+<tr>
+<td>Seats</td>
+<td><code>owner/seats.html</code></td>
+<td>halls, seats, allocation</td>
+<td><code>GET /halls/{id}/seats</code>, <code>POST /seats/{id}/allocate</code></td>
+</tr>
+<tr>
+<td>Money</td>
+<td><code>owner/payments.html</code></td>
+<td>payments list, collections</td>
+<td><code>GET /payments</code>, <code>GET /owner/collections</code></td>
+</tr>
+<tr>
+<td>Record payment</td>
+<td><code>owner/record-payment.html</code></td>
+<td>RecordPayment rules</td>
+<td><code>POST /payments</code> (Idempotency-Key header)</td>
+</tr>
+<tr>
+<td>Dues</td>
+<td><code>owner/dues.html</code></td>
+<td>outstanding dues</td>
+<td><code>GET /dues</code></td>
+</tr>
+<tr>
+<td>Approvals</td>
+<td><code>owner/approvals.html</code></td>
+<td>student payment claims, renewal requests</td>
+<td><code>GET /approvals</code>, <code>POST /payment-submissions/{id}/confirm</code>, <code>.../reject</code></td>
+</tr>
+<tr>
+<td>Memberships</td>
+<td><code>owner/memberships.html</code></td>
+<td>expiring/active/expired</td>
+<td><code>GET /memberships?state=</code></td>
+</tr>
+<tr>
+<td>Expenses</td>
+<td><code>owner/expenses.html</code></td>
+<td>expenses with receipt photo</td>
+<td><code>GET/POST /expenses</code></td>
+</tr>
+<tr>
+<td>Reports</td>
+<td><code>owner/reports.html</code></td>
+<td>report engine, exports</td>
+<td><code>GET /reports/{key}</code>, `GET /reports/{key}/export?format=pdf</td>
+</tr>
+<tr>
+<td>Books</td>
+<td><code>owner/books.html</code></td>
+<td>catalogue lookup</td>
+<td><code>GET /books?q=</code></td>
+</tr>
+<tr>
+<td>Issue &amp; return</td>
+<td><code>owner/issue-return.html</code></td>
+<td>IssueBooks / ReturnBooks</td>
+<td><code>POST /loans</code>, <code>POST /loans/return</code></td>
+</tr>
+<tr>
+<td>Loans</td>
+<td><code>owner/loans.html</code></td>
+<td>overdue, due soon</td>
+<td><code>GET /loans?status=</code></td>
+</tr>
+<tr>
+<td>Fines</td>
+<td><code>owner/fines.html</code></td>
+<td>collect (waive stays on web)</td>
+<td><code>GET /fines</code>, <code>POST /fines/{id}/collect</code></td>
+</tr>
+<tr>
+<td>Biometric devices</td>
+<td><code>owner/biometric-attendance.html</code></td>
+<td><strong>Built</strong></td>
+<td>see section 7b</td>
+</tr>
+<tr>
+<td>More / Settings</td>
+<td><code>owner/profile.html</code></td>
+<td>app lock, language</td>
+<td><code>GET /me</code></td>
+</tr>
+</tbody>
+</table>
+<p>Not in the app on purpose (stay on the web panel): creating plans and halls, roles and permissions, library settings, book import and label printing, stock-taking, Super Admin features.</p>
+<h2>6. Design system</h2>
+<p>Same brand as the web panel, mobile-sized. Values are in <code>design-tokens.json</code> and <code>assets/app.css</code>.</p>
+<p><strong>Color</strong></p>
+<ul>
+<li>Brand green: 50 <code>#effaf3</code>, 100 <code>#d8f3e2</code>, 500 <code>#34a96b</code>, <strong>600 <code>#2f9e5f</code> (primary)</strong>, 700 <code>#237a49</code>, 800 <code>#1f613c</code>.</li>
+<li>Ink <code>#10201a</code>, secondary <code>#3d4d45</code>, muted <code>#6b7a72</code>; lines <code>#e3e9e5</code>; page <code>#f5f8f6</code>; card <code>#fff</code>.</li>
+<li>Semantic: red <code>#dc2626</code> (overdue, due, error), amber <code>#f59e0b</code> (warning, pending, late), blue <code>#3b82f6</code> (info, upcoming), violet <code>#8b5cf6</code> (e-books, special). Semantic colors carry status only, never decoration. Never rely on color alone: badges always carry text.</li>
+</ul>
+<p><strong>Type</strong> Inter. Sizes: 11 caption · 12 small · 14 body · 15 button/title · 18–20 screen title · 22–34 numbers. Numbers use tabular figures. Titles 700, body 400–500.</p>
+<p><strong>Space and shape</strong> 4 px grid; screen padding 16; card padding 16; gaps 12. Radius: 8 / 12 (inputs, tiles) / 16 (cards) / 24 (sheets, hero). Touch targets ≥ 44 px. One level of shadow for cards, one for sheets.</p>
+<p><strong>Components</strong> (class names in the CSS): top bar <code>.appbar</code>, bottom tabs <code>.tabbar</code> (5 max), hero card <code>.hero</code>, stat tile <code>.stat</code>, quick actions <code>.quick</code>, list <code>.list/.item</code>, badge <code>.badge</code>, filter chip <code>.chip</code>, segmented control <code>.seg</code>, buttons <code>.btn</code> (primary, <code>.sec</code>, <code>.danger</code>, <code>.sm</code>), inputs <code>.input</code>, switch <code>.switch</code>, bottom sheet <code>.sheet</code>, floating action <code>.fab</code>, calendar <code>.cal</code>, seat grid <code>.seats</code>, scanner <code>.scanbox</code>, empty/error/loading <code>.empty</code> <code>.skel</code>, notices <code>.note</code>.</p>
+<p><strong>States every list needs:</strong> loading skeleton, empty (with a next step), error with retry, offline banner with cached data, read-only banner. See <code>common/states.html</code>.</p>
+<p><strong>Motion</strong> short (150–200 ms) and functional: sheet slide-up, tab change fade. Respect &quot;reduce motion&quot;.</p>
+<p><strong>Accessibility</strong> contrast ≥ 4.5:1 for text; support Dynamic Type / font scale to 130 %; every icon button has a label; focus order follows reading order.</p>
+<p><strong>Dark mode</strong> is not drawn. Build the app from the tokens so a dark set can be added; do not hard-code hex values in screens.</p>
+<p><strong>Languages</strong> English first; Hindi next (strings in resource files, <code>₹</code> with Indian grouping: 4,90,200).</p>
+<h2>7. Biometrics: two different things</h2>
+<p>The panel has <strong>neither</strong> today. They solve different problems.</p>
+<h3>7a. App unlock (fingerprint / face to open the app) — easy, designed</h3>
+<ul>
+<li>Uses the phone's own biometrics (iOS LocalAuthentication, Android BiometricPrompt). The app never sees or stores a fingerprint.</li>
+<li>Flow: first sign-in with password → ask &quot;Unlock with fingerprint next time?&quot; → store the session token in Keychain/Keystore, protected by biometrics → on next launch show the OS prompt; on failure fall back to password.</li>
+<li>Screens: <code>common/login.html</code> (button + sheet), <code>student/profile.html</code> and <code>owner/profile.html</code> (switch).</li>
+<li>Needs no backend change beyond the token API.</li>
+</ul>
+<h3>7b. Fingerprint / thumb attendance (door device) — <strong>built on the server</strong></h3>
+<p>A wall device (ZKTeco, eSSL, Realtime, etc.) reads the finger. The library wants those punches to become attendance.</p>
+<p>Recommended design:</p>
+<ol>
+<li>Devices push punches to the server over the vendor's network protocol (ADMS/push) or the server pulls them with the vendor SDK. A small connector service per device type does this.</li>
+<li>New tables: <code>biometric_devices</code> (library, name, serial, last_seen), <code>biometric_enrollments</code> (student ↔ device user id), <code>biometric_punches</code> (device, device user id, time, direction, raw).</li>
+<li>A punch with a known enrollment calls the existing check-in/check-out rules (late flag, one open visit, duplicate window e.g. 2 minutes). Unknown ids go to an &quot;Unmatched&quot; list for staff to enroll.</li>
+<li>Fingerprint templates stay <strong>on the device</strong>. Our database stores only the device user id, never the fingerprint. Get the student's consent (privacy law applies to biometric data).</li>
+<li>The owner app gets the &quot;Device attendance&quot; screen (<code>owner/biometric-attendance.html</code>, marked <em>Planned</em>) and an &quot;Enroll&quot; action.</li>
+<li>Fallback for libraries without a device: CSV import of the device's export, or QR check-in with the student's rotating ID.</li>
+</ol>
+<p>Do <strong>not</strong> use the phone's fingerprint as proof of attendance (it proves the phone owner, not who is at the library, and can be shared).</p>
+<h2>8. Proposed API (to be built)</h2>
+<p>REST, JSON, base <code>/api/v1</code>. Auth with Laravel Sanctum personal access tokens (one per device).</p>
+<ul>
+<li><code>POST /auth/login</code> (email or mobile + password + device name) → token, user, libraries. <code>POST /auth/logout</code>. <code>POST /auth/forgot</code>.</li>
+<li><code>GET /me?library={id}</code> → user, role, <strong>permissions[]</strong>, <strong>modules[]</strong>, <code>read_only</code>, <code>subscription_state</code>, settings flags, library name/timezone/currency.</li>
+<li>Lists are paginated (<code>?page=</code>, 20 per page), filters in the query string, dates ISO-8601 in the library's time zone, money as strings with 2 decimals.</li>
+<li>Errors: <code>{ &quot;message&quot;: &quot;...&quot;, &quot;errors&quot;: { &quot;field&quot;: [&quot;...&quot;] } }</code> with 401 (sign in), 403 (not allowed or read-only), 404, 422 (validation), 429 (rate limit).</li>
+<li>Writes that move money or stock (<code>POST /payments</code>, <code>/loans</code>, <code>/loans/return</code>) take an <code>Idempotency-Key</code> header so a retry never double-posts.</li>
+<li>Files: proofs, expense receipts and e-books are private; return short-lived signed URLs or stream through the API.</li>
+<li>Push: FCM/APNs; store a device token per login; same event kinds as the web notifications (<code>reservation.ready</code>, <code>payment_submission.new</code>, <code>loan.overdue</code>, ...).</li>
+<li>Rate limits: login 5/min per IP+email; scan 60/min per user.</li>
+</ul>
+<p>Everything reuses the existing Laravel actions (<code>RecordPayment</code>, <code>IssueBooks</code>, <code>ReturnBooks</code>, <code>CheckInStudent</code>...) so the mobile rules are identical to the web.</p>
+<h2>9. Security</h2>
+<ul>
+<li>Role and permissions come from the server on every request; never trust the app.</li>
+<li>Tokens in Keychain/Keystore; optional biometric gate; revoke on logout and on password change; idle timeout configurable.</li>
+<li>The student ID QR contains a signed, 60-second token, not the student number. Block screenshots on that screen (Android <code>FLAG_SECURE</code>).</li>
+<li>HTTPS only; certificate pinning optional.</li>
+<li>No library data cached for a signed-out user; clear cache on logout and on switching library.</li>
+<li>Read-only libraries and missing modules are enforced by the API (403), the app only mirrors it.</li>
+</ul>
+<h2>10. Suggested build order</h2>
+<ol>
+<li>API foundation: auth, <code>/me</code>, notifications, push tokens.</li>
+<li><strong>Student app</strong> (smaller): home, ID QR, payments + &quot;I have paid&quot;, attendance, books (renew/reserve), e-books.</li>
+<li><strong>Owner app</strong>: dashboard, students, check-in/scanner, record payment, approvals, dues.</li>
+<li>Owner extras: books lending, reports export, expenses, seats.</li>
+<li>Biometric app unlock (can ship with step 2).</li>
+<li>Biometric device attendance (section 7b), after choosing the device brand.</li>
+</ol>
+<p>Cross-platform framework (Flutter or React Native) is recommended: one codebase, two roles.</p>
+<h2>11. Questions for the product owner</h2>
+<ol>
+<li>Which fingerprint device brand do libraries use (decides the connector)?</li>
+<li>Hindi at launch, or English only?</li>
+<li>Should students see seat availability, or only their own seat?</li>
+<li>Should staff be able to waive fines in the app (today: owner on the web only)?</li>
+<li>Offline check-in for weak networks? (Not designed; adds sync complexity.)</li>
+</ol>
+<h2>12. Version 2 layout (reference-style)</h2>
+<p>The owner and student <strong>Home</strong> now follow a dashboard pattern: coloured header (menu button, library name, shortcut icons), a swipeable banner, a <strong>Dashboard | Insights</strong> switch, and a 3-column grid of count tiles (icon + coloured count circle). Each tile opens the matching list.</p>
+<ul>
+<li><strong>Dashboard tiles (owner):</strong> live members, total members, expired memberships, expiring in 1-7 days, today's joinings and renewals, today's / this month's / last month's collection, check-ins, due amount, pending approvals, free seats, books issued, overdue books, fines due, reservations, expenses. Endpoint: <code>GET /owner/dashboard</code>.</li>
+<li><strong>Insights:</strong> live rate, money trend, attendance, expiring soon, member health (active, inactive 30 days, renewal rate, at-risk), 7-month collection bars, books at a glance. Endpoint: <code>GET /owner/insights</code>.</li>
+<li><strong>Side menu</strong> (open from the menu button or the Menu tab): profile card with Library ID, library switcher, then groups: Quick access (Master, Subscription, Support), Management (Seats, Member management, Attendance, Books and lending), Reports and finance (Payments, Expenses, Reports), Administration (Staff and roles, Settings, Notifications, Profile, Log out).</li>
+<li>Every admin-panel module has a screen, including halls, plans, staff and roles, settings, subscription, reservations, e-books, stock-taking and support. Menu items and tiles are hidden when the person's role lacks the permission or the library lacks the module.</li>
+<li><strong>Re-skinning:</strong> change the <code>--brand-*</code> tokens in <code>assets/app.css</code>.</li>
+</ul>
+<h2>13. Version 3 (30 Oct 2026): what is new</h2>
+<p>Everything below now exists on the web panel. The app screens mirror it; the API endpoints for them still have to be added (section 8 lists the pattern).</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Screen</th>
+<th>What it shows</th>
+<th>Web source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Themes</td>
+<td><code>owner/theme.html</code></td>
+<td>Default, Classic, Ocean, Sunset, Forest, Royal. Applies at once; the theme belongs to the library, so staff and students see the same colours. In the prototype the choice is kept in <code>localStorage</code> (<code>lmsTheme</code>) and every screen follows it.</td>
+<td><code>App\Support\Themes</code>, library setting <code>theme</code></td>
+</tr>
+<tr>
+<td>Dashboard</td>
+<td><code>owner/home.html</code></td>
+<td>Gradient tiles (live, total, expired, expiring 1–3 / 4–7 / 8–15 days, collections, dues, check-ins, seats, expenses, books, fines), collections by method, quick actions. SMS and WhatsApp credit counters in the header.</td>
+<td><code>pages/app/dashboard</code></td>
+</tr>
+<tr>
+<td>Insights</td>
+<td><code>owner/insights.html</code></td>
+<td>Gradient tiles and coloured-edge cards: member donut, collection bars, weekly attendance, seat occupancy, operational pressure.</td>
+<td><code>pages/app/insights</code></td>
+</tr>
+<tr>
+<td>Seats by shift</td>
+<td><code>owner/seats.html</code></td>
+<td>Tabs Morning, Afternoon, Evening, Night, Fullday. One seat can be shared by students in different shifts; Fullday blocks all. Seat drawings: available (desk), occupied (student at laptop, name and number), reserved (tag), maintenance (cross).</td>
+<td><code>seat_allocations.shift</code>, <code>AllocateSeat($seat, $student, $shift)</code></td>
+</tr>
+<tr>
+<td>Seat on registration</td>
+<td><code>owner/seat-select.html</code></td>
+<td>After saving a new student (or &quot;Allot seat&quot; on a student without one): shift, plan, start date, seat grid, Skip or Add. Add starts the plan and gives the seat in one transaction.</td>
+<td><code>pages/app/students/form</code></td>
+</tr>
+<tr>
+<td>Students</td>
+<td><code>owner/students.html</code>, <code>student-detail.html</code>, <code>student-add.html</code></td>
+<td>Total, VIP, Blocked, Left, Frozen filters; registration date range; seat with shift and full seat history; Biometric / card ID field.</td>
+<td>students index / show / form</td>
+</tr>
+<tr>
+<td>Biometric devices</td>
+<td><code>owner/biometric-attendance.html</code></td>
+<td>Devices with Online / Not responding, punch log (checked in, checked out, ignored, unknown ID, not accepted), add device, one-time access token.</td>
+<td><code>BiometricController</code>, <code>/iclock/cdata</code>, <code>POST /api/biometric/punches</code></td>
+</tr>
+<tr>
+<td>Plans and checkout</td>
+<td><code>owner/plans-pricing.html</code>, <code>checkout.html</code>, <code>payment-success.html</code>, <code>subscription.html</code></td>
+<td>Plan slider with Library, SMS and WhatsApp tabs; checkout with coins, Razorpay or cash (proof + note); success / waiting for approval.</td>
+<td>Razorpay order + webhook, <code>StartOnlinePayment</code>, <code>FulfilOnlinePayment</code></td>
+</tr>
+<tr>
+<td>Credits and messages</td>
+<td><code>owner/credits.html</code>, <code>message-history.html</code>, <code>message-templates.html</code></td>
+<td>Credit balances and packs; every message with Sent / Not sent and the reason; automatic triggers and templates (SMS set by the platform, WhatsApp editable).</td>
+<td><code>Messaging</code>, <code>MessageTemplates</code>, <code>message_logs</code></td>
+</tr>
+<tr>
+<td>Support and more</td>
+<td><code>owner/refer-earn.html</code>, <code>help.html</code>, <code>library-qr.html</code>, <code>contact.html</code>, <code>profile.html</code></td>
+<td>Referral code and coins, FAQs in English and Hindi, library QR, contact, profile and password.</td>
+<td>referral, <code>HelpContent</code>, profile page</td>
+</tr>
+<tr>
+<td>Student</td>
+<td><code>student/membership.html</code>, <code>student/attendance.html</code>, <code>student/help.html</code></td>
+<td>Seat with shift, fingerprint visits, same FAQs.</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3>API to add for version 3</h3>
+<ul>
+<li><code>GET /seats?shift=morning</code> returning each seat's state for that shift and the holder; <code>POST /seats/{seat}/allocate {student_id, shift}</code>; <code>POST /seat-allocations/{id}/release</code>.</li>
+<li><code>GET /biometric/devices</code>, <code>POST /biometric/devices</code> (returns the token once), <code>GET /biometric/punches?result=</code>.</li>
+<li><code>GET /plans?type=library|sms|whatsapp</code>, <code>POST /checkout</code> (creates the Razorpay order server-side; the app opens Razorpay Checkout with the order id and posts the signature back for verification), <code>POST /checkout/cash</code> (multipart: proof, note).</li>
+<li><code>GET /credits</code>, <code>GET /messages?channel=&amp;status=</code>, <code>GET|PUT /message-templates</code>, <code>GET /referrals</code>, <code>GET /help?lang=en|hi</code>, <code>PUT /me</code>, <code>PUT /me/password</code>, <code>PUT /library/theme</code>.</li>
+</ul>
+</main></body></html>

@@ -29,6 +29,7 @@ new #[Layout('layouts::panel')] class extends Component
     public string $reference = '';
     public string $paidOn = '';
     public string $note = '';
+    public bool $useCoins = false;
     public array $proofs = [];
 
     public ?int $replyTo = null;
@@ -38,6 +39,15 @@ new #[Layout('layouts::panel')] class extends Component
     public function mount(): void
     {
         $this->authorizePermission('billing.view');
+
+        $plan = (int) request('plan');
+        if ($plan && auth()->user()->can('billing.manage') && ! $this->open) {
+            $this->choose($plan, (string) request('cycle'));
+            if (request()->boolean('coins')) {
+                $this->useCoins = true;
+                $this->fillAmount();
+            }
+        }
     }
 
     #[Computed]
@@ -80,7 +90,7 @@ new #[Layout('layouts::panel')] class extends Component
         $s = $this->sub;
         abort_unless($s && $s->status !== 'cancelled', 404);
 
-        $this->reset(['reference', 'note', 'proofs']);
+        $this->reset(['reference', 'note', 'proofs', 'useCoins']);
         $this->planId = (string) ($s->subscription_plan_id ?? '');
         $this->cycle = $s->billing_cycle;
         $this->method = (string) (BillingSettings::get('payment_methods')[0] ?? 'bank_transfer');
@@ -88,6 +98,17 @@ new #[Layout('layouts::panel')] class extends Component
         $this->fillAmount();
         $this->resetErrorBag();
         $this->showPay = true;
+    }
+
+    public function choose(int $planId, string $cycle): void
+    {
+        $plan = $this->plans->firstWhere('id', $planId);
+        abort_unless($plan && in_array($cycle, $plan->cycles(), true), 404);
+
+        $this->openPay();
+        $this->planId = (string) $plan->id;
+        $this->cycle = $cycle;
+        $this->fillAmount();
     }
 
     public function updatedPlanId(): void
@@ -104,10 +125,34 @@ new #[Layout('layouts::panel')] class extends Component
         $this->fillAmount();
     }
 
+    public function updatedUseCoins(): void
+    {
+        $this->fillAmount();
+    }
+
+    /** The most referral coins the plan and cycle chosen in the payment form can take. */
+    public function maxCoins(): int
+    {
+        $plan = $this->plans->firstWhere('id', (int) $this->planId) ?? $this->sub?->plan;
+        if (! \App\Support\BillingSettings::get('referral_enabled') || ! $plan || $plan->priceFor($this->cycle) === null) {
+            return 0;
+        }
+
+        return \App\Models\ReferralCoin::maxRedeemable(Tenancy::currentId(), (float) \App\Support\Pricing::quote(Tenancy::currentId(), $plan, $this->cycle)['total']);
+    }
+
+    public function coinsToUse(): int
+    {
+        return $this->useCoins ? $this->maxCoins() : 0;
+    }
+
     protected function fillAmount(): void
     {
         $plan = $this->plans->firstWhere('id', (int) $this->planId) ?? $this->sub?->plan;
         $this->amount = $plan && $plan->priceFor($this->cycle) !== null ? \App\Support\Pricing::quote(Tenancy::currentId(), $plan, $this->cycle)['total'] : '';
+        if ($this->amount !== '' && ($coins = $this->coinsToUse()) > 0) {
+            $this->amount = bcsub($this->amount, number_format($coins * \App\Models\ReferralCoin::coinValue(), 2, '.', ''), 2);
+        }
     }
 
     public function savePay(): void
@@ -130,7 +175,7 @@ new #[Layout('layouts::panel')] class extends Component
         try {
             app(SubmitSubscriptionPayment::class)(
                 Tenancy::library(), SubscriptionPlan::findOrFail($this->planId), $this->cycle, $this->reference, $this->amount,
-                $this->method, Carbon::parse($this->paidOn), $this->note ?: null, $this->proofs,
+                $this->method, Carbon::parse($this->paidOn), $this->note ?: null, $this->proofs, $this->coinsToUse(),
             );
         } catch (BusinessRuleException $e) {
             $this->addError('reference', $e->getMessage());
@@ -321,6 +366,7 @@ new #[Layout('layouts::panel')] class extends Component
                     @else
                         <x-ui.button class="w-full" wire:click="openPay">Submit a payment</x-ui.button>
                     @endif
+                    <a href="{{ route('app.subscription.plans', ['library' => $slug]) }}" class="block w-full rounded-lg border border-brand-600 px-4 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-brand-50">View plans and upgrade</a>
                 @endif
                 <x-ui.button variant="secondary" class="w-full" wire:click="openSupport"><x-lm.icon name="mail" class="h-4 w-4" /> Contact support</x-ui.button>
                 @if ($support) <p class="text-xs text-gray-500">Or reach us: {{ $support }}</p> @endif
@@ -396,6 +442,9 @@ new #[Layout('layouts::panel')] class extends Component
                     <x-ui.select name="cycle" label="Billing cycle" wire:model.live="cycle">
                         @foreach (($this->plans->firstWhere('id', (int) $planId)?->cycles() ?? []) as $c) <option value="{{ $c }}">{{ \App\Models\SubscriptionPlan::CYCLES[$c] }}</option> @endforeach
                     </x-ui.select>
+                    @if (($maxCoins = $this->maxCoins()) > 0)
+                        <label class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:col-span-2"><input type="checkbox" wire:model.live="useCoins" class="rounded text-brand-600 focus:ring-brand-500"> Use {{ $maxCoins }} referral coins and save ₹{{ number_format($maxCoins * \App\Models\ReferralCoin::coinValue(), 2) }}</label>
+                    @endif
                     <x-ui.input name="amount" label="Amount paid (₹)" type="number" step="0.01" min="0" required wire:model="amount"                     :hint="\App\Support\BillingSettings::get('require_exact_amount') ? 'Must match the total below.' : null" />
                     @php
                         $quotePlan = $this->plans->firstWhere('id', (int) $planId) ?? $this->sub?->plan;

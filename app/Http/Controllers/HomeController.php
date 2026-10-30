@@ -6,17 +6,17 @@ use App\Models\SubscriptionPlan;
 use App\Support\BillingSettings;
 use Illuminate\Http\Request;
 
-/** "/": signed-in people go to their workspace; everyone else sees the public website. */
+/** "/": the public website, visible to everyone (signed-in people reach their workspace via the "workspace" route). */
 class HomeController extends Controller
 {
     public function __invoke(Request $request)
     {
-        if ($request->user()) {
-            return app(SessionController::class)->home($request);
+        if (! BillingSettings::get('landing_enabled')) {
+            return $request->user() ? redirect()->route('workspace') : redirect()->route('login');
         }
 
-        if (! BillingSettings::get('landing_enabled')) {
-            return redirect()->route('login');
+        if (is_string($ref = $request->query('ref')) && preg_match('/^[A-Za-z0-9-]{3,30}$/', $ref)) {
+            session(['ref' => strtoupper($ref)]);
         }
 
         $days = (int) BillingSettings::get('offer_free_days');

@@ -16,6 +16,7 @@ new #[Layout('layouts::panel')] class extends Component
     public string $currency = 'INR';
     public string $opening_time = '';
     public string $closing_time = '';
+    public string $theme = '';             // empty = the platform default
 
     public function mount(string $library): void
     {
@@ -30,6 +31,7 @@ new #[Layout('layouts::panel')] class extends Component
             'currency' => $lib->currency,
             'opening_time' => $lib->opening_time ? substr($lib->opening_time, 0, 5) : '',
             'closing_time' => $lib->closing_time ? substr($lib->closing_time, 0, 5) : '',
+            'theme' => (string) \App\Support\LibrarySettings::get('theme', null, $lib->id),
         ]);
     }
 
@@ -44,12 +46,20 @@ new #[Layout('layouts::panel')] class extends Component
             'currency' => ['required', 'string', 'max:8'],
             'opening_time' => ['nullable', 'date_format:H:i'],
             'closing_time' => ['nullable', 'date_format:H:i', 'after:opening_time'],
+            'theme' => ['nullable', 'in:'.implode(',', array_keys(\App\Support\Themes::ALL))],
         ]);
 
         $library = Library::findOrFail($this->libraryId);
+        $theme = (string) ($data['theme'] ?? '');
+        unset($data['theme']);
         $library->fill(array_map(fn ($v) => $v === '' ? null : $v, $data));
         $changed = array_keys($library->getDirty());
         $library->save();
+
+        if ($theme !== (string) \App\Support\LibrarySettings::get('theme', null, $library->id)) {
+            \App\Support\LibrarySettings::update(['theme' => $theme], $library);
+            AuditLog::record('library.theme_changed', $library, ['theme' => $theme ?: 'platform default'], $library->id);
+        }
 
         // Status is deliberately not editable here: it changes only through the audited actions.
         if ($changed) {
@@ -71,6 +81,10 @@ new #[Layout('layouts::panel')] class extends Component
                 <x-ui.input name="name" label="Library name" required wire:model="name" />
                 <x-ui.input name="email" label="Library email" type="email" wire:model="email" />
                 <x-ui.input name="phone" label="Library phone" type="tel" wire:model="phone" />
+                <x-ui.select name="theme" label="Colour theme" wire:model="theme" hint="Libraries with the right permission can also change this themselves.">
+                    <option value="">Platform default ({{ \App\Support\Themes::ALL[\App\Support\Themes::platformDefault()]['label'] }})</option>
+                    @foreach (\App\Support\Themes::ALL as $tk => $tv) <option value="{{ $tk }}">{{ $tv['label'] }}</option> @endforeach
+                </x-ui.select>
                 <x-ui.select name="timezone" label="Time zone" wire:model="timezone">
                     @foreach (timezone_identifiers_list() as $tz) <option value="{{ $tz }}">{{ $tz }}</option> @endforeach
                 </x-ui.select>

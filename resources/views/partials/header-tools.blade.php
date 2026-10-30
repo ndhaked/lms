@@ -6,7 +6,10 @@
 @endphp
 
 <div class="flex shrink-0 items-center gap-3">
+    @if (! $isPlatform && $user->can('billing.view'))<livewire:message-counter />@endif
     <livewire:notification-bell />
+
+    @if ($isPlatform)<livewire:theme-picker scope="admin" />@elseif ($user->can('settings.manage'))<livewire:theme-picker />@endif
 
     <span class="hidden rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 sm:inline-flex">{{ $role }}</span>
 
@@ -23,6 +26,7 @@
                 <p class="truncate text-sm font-medium text-gray-900">{{ $user->name }}</p>
                 <p class="truncate text-xs text-gray-500">{{ $user->email }}</p>
             </div>
+            <a href="{{ $isPlatform ? route('admin.profile.edit') : route('app.profile.edit', ['library' => \App\Support\Tenancy::slug()]) }}" wire:navigate class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">My Profile</a>
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
                 <button type="submit" class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Log out</button>

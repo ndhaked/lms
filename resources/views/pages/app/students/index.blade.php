@@ -25,14 +25,43 @@ new #[Layout('layouts::panel')] class extends Component
     #[Url]
     public string $membership = '';
 
+    /** Registration date range (either end may be left empty). */
+    #[Url]
+    public string $from = '';
+
+    #[Url]
+    public string $until = '';
+
+    /** vip | frozen: the quick views in the sidebar (blocked and left are the status filter) */
+    #[Url]
+    public string $view = '';
+
     public function mount(): void
     {
         $this->authorizePermission('students.view');
     }
 
+    /** Quick ranges: today | week | month | last30 | clear */
+    public function range(string $preset): void
+    {
+        [$this->from, $this->until] = match ($preset) {
+            'today' => [today()->toDateString(), today()->toDateString()],
+            'week' => [today()->startOfWeek()->toDateString(), today()->toDateString()],
+            'month' => [today()->startOfMonth()->toDateString(), today()->toDateString()],
+            'last30' => [today()->subDays(29)->toDateString(), today()->toDateString()],
+            default => ['', ''],
+        };
+        $this->resetPage();
+    }
+
     public function updated(string $name): void
     {
-        if (in_array($name, ['search', 'status', 'membership'], true)) {
+        if (in_array($name, ['search', 'status', 'membership', 'view', 'from', 'until'], true)) {
+            foreach (['from', 'until'] as $k) {
+                if ($this->{$k} !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->{$k})) {
+                    $this->{$k} = '';
+                }
+            }
             $this->resetPage();
         }
     }
@@ -41,7 +70,7 @@ new #[Layout('layouts::panel')] class extends Component
     public function students()
     {
         return Student::query()
-            ->with('activeAllocation.seat')
+            ->with(['activeAllocation.seat', 'latestAllocation.seat'])
             ->addSelect(['students.*', 'valid_until' => StudentMembership::query()
                 ->select('ends_on')
                 ->whereColumn('student_memberships.student_id', 'students.id')
@@ -51,6 +80,10 @@ new #[Layout('layouts::panel')] class extends Component
                 ->orWhere('phone', 'like', "%{$this->search}%")
                 ->orWhere('student_code', 'like', "%{$this->search}%")))
             ->when($this->status !== '', fn ($q) => $q->where('status', $this->status))
+            ->when($this->from !== '', fn ($q) => $q->whereDate('registered_on', '>=', $this->from))
+            ->when($this->until !== '', fn ($q) => $q->whereDate('registered_on', '<=', $this->until))
+            ->when($this->view === 'vip', fn ($q) => $q->where('is_vip', true))
+            ->when($this->view === 'frozen', fn ($q) => $q->whereHas('memberships', fn ($m) => $m->where('status', 'suspended')))
             ->when($this->membership === 'active', fn ($q) => $q->whereHas('memberships', fn ($m) => $m->current()))
             ->when($this->membership === 'none', fn ($q) => $q->whereDoesntHave('memberships', fn ($m) => $m->current()))
             ->when($this->membership === 'expiring', fn ($q) => $q->whereHas('memberships', fn ($m) => $m->expiringWithin((int) \App\Support\LibrarySettings::get('renewal_window_days'))))
@@ -86,8 +119,23 @@ new #[Layout('layouts::panel')] class extends Component
             <input wire:model.live.debounce.300ms="search" type="search" placeholder="Search name, phone, ID…" class="w-64 rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
             <select wire:model.live="status" class="rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
                 <option value="">All statuses</option>
-                <option value="active">Active</option><option value="suspended">Suspended</option><option value="inactive">Inactive</option>
+                <option value="active">Active</option><option value="suspended">Blocked (suspended)</option><option value="inactive">Left (inactive)</option>
             </select>
+            <select wire:model.live="view" class="rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+                <option value="">All members</option><option value="vip">VIP members</option><option value="frozen">Frozen memberships</option>
+            </select>
+            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm" title="Filter by registration date">
+                <span class="text-xs font-semibold text-gray-500">Registered</span>
+                <input type="date" wire:model.live="from" max="{{ $until ?: today()->toDateString() }}" class="rounded border-gray-200 py-1 text-sm focus:border-brand-500 focus:ring-brand-500" aria-label="From date">
+                <span class="text-gray-400">to</span>
+                <input type="date" wire:model.live="until" min="{{ $from }}" class="rounded border-gray-200 py-1 text-sm focus:border-brand-500 focus:ring-brand-500" aria-label="To date">
+                <span class="ml-1 flex flex-wrap gap-1">
+                    @foreach (['today' => 'Today', 'week' => 'This week', 'month' => 'This month', 'last30' => 'Last 30 days'] as $k => $l)
+                        <button type="button" wire:click="range('{{ $k }}')" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-brand-50 hover:text-brand-700">{{ $l }}</button>
+                    @endforeach
+                    @if ($from !== '' || $until !== '')<button type="button" wire:click="range('clear')" class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100">Clear</button>@endif
+                </span>
+            </div>
             <select wire:model.live="membership" class="rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
                 <option value="">Any membership</option>
                 <option value="active">Has active membership</option><option value="none">No active membership</option><option value="expiring">Expiring soon</option>
@@ -96,8 +144,8 @@ new #[Layout('layouts::panel')] class extends Component
         </div>
         @if ($this->can('students.export') && \App\Support\LibrarySettings::get('export_enabled') && \App\Support\Entitlements::hasModule('exports'))
             <div class="flex gap-2">
-                <a href="{{ route('app.students.export', ['library' => \App\Support\Tenancy::slug(), 'format' => 'csv', 'status' => $status ?: null]) }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Export CSV</a>
-                <a href="{{ route('app.students.export', ['library' => \App\Support\Tenancy::slug(), 'format' => 'xlsx', 'status' => $status ?: null]) }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Export Excel</a>
+                <a href="{{ route('app.students.export', ['library' => \App\Support\Tenancy::slug(), 'format' => 'csv', 'status' => $status ?: null, 'from' => $from ?: null, 'until' => $until ?: null]) }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Export CSV</a>
+                <a href="{{ route('app.students.export', ['library' => \App\Support\Tenancy::slug(), 'format' => 'xlsx', 'status' => $status ?: null, 'from' => $from ?: null, 'until' => $until ?: null]) }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Export Excel</a>
             </div>
         @endif
         @if ($this->can('students.create'))
@@ -117,7 +165,7 @@ new #[Layout('layouts::panel')] class extends Component
                     @forelse ($this->students as $s)
                         <tr wire:key="student-{{ $s->id }}" class="hover:bg-gray-50/60">
                             <td class="px-4 py-3 text-gray-500">{{ $s->student_code }}</td>
-                            <td class="px-4 py-3 font-medium text-gray-900"><a href="{{ route('app.students.show', ['library' => \App\Support\Tenancy::slug(), 'student' => $s->id]) }}" wire:navigate class="hover:text-brand-700">{{ $s->name }}</a></td>
+                            <td class="px-4 py-3 font-medium text-gray-900"><a href="{{ route('app.students.show', ['library' => \App\Support\Tenancy::slug(), 'student' => $s->id]) }}" wire:navigate class="hover:text-brand-700">{{ $s->name }}</a>@if ($s->is_vip) <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">VIP</span>@endif</td>
                             <td class="px-4 py-3 text-gray-600">{{ $s->phone }}</td>
                             <td class="px-4 py-3">
                                 @if ($s->valid_until)
@@ -127,7 +175,15 @@ new #[Layout('layouts::panel')] class extends Component
                                     <span class="text-gray-400">None</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3 text-gray-600">{{ $s->activeAllocation?->seat?->code ?? '—' }}</td>
+                            <td class="px-4 py-3 text-gray-600">
+                                @if ($s->activeAllocation)
+                                    {{ $s->activeAllocation->seat?->code }}
+                                @elseif ($s->latestAllocation)
+                                    <span class="text-gray-400" title="Last seat, released {{ $s->latestAllocation->released_at?->format('d M Y') }}">{{ $s->latestAllocation->seat?->code }}<span class="block text-[10px] leading-tight">released {{ $s->latestAllocation->released_at?->format('d M Y') }}</span></span>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td class="px-4 py-3"><x-ui.badge :color="match ($s->status) { 'active' => 'green', 'suspended' => 'amber', default => 'gray' }">{{ ucfirst($s->status) }}</x-ui.badge></td>
                             <td class="space-x-3 px-4 py-3 text-right">
                                 <a href="{{ route('app.students.show', ['library' => \App\Support\Tenancy::slug(), 'student' => $s->id]) }}" wire:navigate class="font-medium text-brand-600 hover:text-brand-800">View</a>

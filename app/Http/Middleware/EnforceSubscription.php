@@ -23,7 +23,7 @@ class EnforceSubscription
         View::share('subscription', $subscription);
         View::share('subscriptionState', $state);
 
-        if ($state !== 'restricted' || $request->routeIs('app.subscription.*')) {
+        if ($state !== 'restricted' || $request->routeIs('app.subscription.*', 'app.help.*', 'app.contact.*', 'app.refer.*', 'app.profile.*')) {
             return $next($request);
         }
 

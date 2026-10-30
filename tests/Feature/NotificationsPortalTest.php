@@ -360,7 +360,7 @@ class NotificationsPortalTest extends TestCase
 
         $this->get("/app/{$slug}/my")->assertOk()->assertSee('Priya Singh')->assertDontSee('Other Person')->assertSee('300.00');
         $this->get("/app/{$slug}")->assertRedirect("/app/{$slug}/my");                     // dashboard sends students home
-        $this->get('/')->assertRedirect("/app/{$slug}");
+        $this->get('/workspace')->assertRedirect("/app/{$slug}");
 
         // own receipt yes, someone else's no
         $own = Payment::where('student_id', $mine->id)->first();

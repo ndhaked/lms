@@ -23,6 +23,7 @@ new #[Layout('layouts::panel')] class extends Component
     public bool $trial = false;
     public string $free_days = '0';        // free access granted straight away (the website offer)
     public ?int $leadId = null;
+    public string $referral_code = '';     // the code of the library that referred this one
 
     public function mount(): void
     {
@@ -36,6 +37,7 @@ new #[Layout('layouts::panel')] class extends Component
                 'name' => $lead->library_name, 'email' => $lead->email, 'phone' => $lead->phone,
                 'owner_name' => $lead->name, 'owner_email' => $lead->email, 'owner_phone' => $lead->phone,
                 'notes' => "From the website ({$lead->type} request #{$lead->id}).".($lead->message ? "\n".$lead->message : ''),
+                'referral_code' => (string) $lead->referral_code,
                 'status' => Library::ACTIVE, 'plan_id' => (string) ($lead->subscription_plan_id ?? ''),
                 'free_days' => $lead->type === 'trial' ? (string) (int) \App\Support\BillingSettings::get('offer_free_days') : '0',
             ]);
@@ -75,6 +77,7 @@ new #[Layout('layouts::panel')] class extends Component
             'owner_phone' => ['required', 'string', 'max:30'],
             'status' => ['required', 'in:'.Library::PENDING.','.Library::ACTIVE],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'referral_code' => ['nullable', 'string', \Illuminate\Validation\Rule::exists('libraries', 'code')],
             'plan_id' => ['nullable', \Illuminate\Validation\Rule::exists('subscription_plans', 'id')->where('status', 'active')],
             'cycle' => ['required', 'in:monthly,quarterly,annual'],
             'trial' => ['boolean'],
@@ -113,6 +116,10 @@ new #[Layout('layouts::panel')] class extends Component
             $this->send_setup,
             $plan ? ['plan' => $plan, 'cycle' => $this->cycle, 'trial' => $this->trial] : null,
         );
+
+        if (filled($this->referral_code)) {
+            $library->forceFill(['referred_by_id' => Library::where('code', $this->referral_code)->value('id')])->save();
+        }
 
         if ((int) $this->free_days > 0 && $plan) {
             app(\App\Actions\Billing\GrantFreePeriod::class)($library, $plan, (int) $this->free_days, $this->leadId ? "Website offer (request #{$this->leadId})" : 'Free period at registration');
@@ -159,6 +166,7 @@ new #[Layout('layouts::panel')] class extends Component
                 <label class="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2">
                     <input type="checkbox" wire:model="send_setup" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500"> Email account setup instructions now
                 </label>
+                <x-ui.input name="referral_code" label="Referred by (library code, optional)" placeholder="LIB-0001" wire:model="referral_code" hint="The referring library earns coins when this one pays." />
                 <x-ui.textarea name="notes" label="Administrative notes (internal)" wire:model="notes" class="sm:col-span-2" />
             </div>
         </section>

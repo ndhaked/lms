@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
 @plugin '@tailwindcss/forms';
+@import './login-command.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -32,3 +33,42 @@ input[type='text'], input[type='email'], input[type='password'], input[type='tel
 input[type='date'], input[type='time'], input[type='search'], select, textarea {
     border-radius: 0.5rem;
 }
+
+/* Library colour themes: every non-default theme also colours the sidebar (see App\Support\Themes). */
+aside.lm-sidebar { transition: background-color .25s, border-color .25s; }
+:root[data-theme] aside.lm-sidebar {
+    background: linear-gradient(180deg, var(--sb-from), var(--sb-mid) 55%, var(--sb-to));
+    border-color: rgba(255, 255, 255, .12);
+}
+:root[data-theme] aside.lm-sidebar .border-gray-200:not(.lm-pop *) { border-color: rgba(255, 255, 255, .16); }
+:root[data-theme] aside.lm-sidebar .text-gray-900:not(.lm-pop *) { color: #fff; }
+:root[data-theme] aside.lm-sidebar :is(.text-gray-600, .text-gray-700):not(.lm-pop *) { color: rgba(255, 255, 255, .9); }
+:root[data-theme] aside.lm-sidebar :is(.text-gray-500, .text-gray-400):not(.lm-pop *) { color: rgba(255, 255, 255, .62); }
+:root[data-theme] aside.lm-sidebar .group:hover .group-hover\:text-gray-500 { color: #fff; }
+:root[data-theme] aside.lm-sidebar :is(.hover\:bg-gray-50, .hover\:bg-gray-100):hover:not(.lm-pop *) { background: rgba(255, 255, 255, .14); }
+:root[data-theme] aside.lm-sidebar .hover\:text-gray-900:hover:not(.lm-pop *) { color: #fff; }
+:root[data-theme] aside.lm-sidebar nav .bg-brand-100\/70 { background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); }
+:root[data-theme] aside.lm-sidebar nav .text-brand-600 { color: #fff; }
+:root[data-theme] aside.lm-sidebar .bg-brand-50\/70 { background: rgba(255, 255, 255, .12); }
+:root[data-theme] aside.lm-sidebar .bg-brand-600 { background: rgba(255, 255, 255, .22); }
+:root[data-theme] aside.lm-sidebar .text-red-500:not(.lm-pop *) { color: #fecaca; }
+
+/* coloured-theme sidebar: profile card, bordered menu cards, gradient active item */
+:root[data-theme] aside.lm-sidebar .lm-profile { display: block; background: linear-gradient(135deg, var(--sb-a), var(--sb-b)); box-shadow: 0 8px 20px rgba(0, 0, 0, .25), inset 0 0 0 1px rgba(255, 255, 255, .2); }
+:root[data-theme] aside.lm-sidebar nav { display: flex; flex-direction: column; gap: .5rem; }
+:root[data-theme] aside.lm-sidebar nav > a,
+:root[data-theme] aside.lm-sidebar nav > span { background: rgba(255, 255, 255, .07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+:root[data-theme] aside.lm-sidebar nav .bg-brand-100\/70 { background: linear-gradient(135deg, var(--sb-a), var(--sb-b)); box-shadow: 0 6px 16px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(255, 255, 255, .25); }
+:root[data-theme] aside.lm-sidebar nav > * { margin-top: 0 !important; }
+:root[data-theme] aside.lm-sidebar nav > form > button,
+:root[data-theme] aside.lm-sidebar nav > button { background: rgba(255, 255, 255, .07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+
+/* expandable Messages group in the sidebar */
+:root[data-theme] aside.lm-sidebar nav .lm-group > button { background: rgba(255, 255, 255, .07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+:root[data-theme] aside.lm-sidebar nav .lm-group > button.bg-brand-100\/70 { background: linear-gradient(135deg, var(--sb-a), var(--sb-b)); box-shadow: 0 6px 16px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(255, 255, 255, .25); }
+:root[data-theme] aside.lm-sidebar nav .lm-group > button.bg-brand-100\/70 * { color: #fff; }
+:root[data-theme] aside.lm-sidebar nav .lm-sub { border-color: rgba(255, 255, 255, .22); }
+:root[data-theme] aside.lm-sidebar nav .lm-sub a { color: rgba(255, 255, 255, .85); }
+:root[data-theme] aside.lm-sidebar nav .lm-sub a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+:root[data-theme] aside.lm-sidebar nav .lm-sub a.font-semibold { background: rgba(255, 255, 255, .2); color: #fff; }
+:root[data-theme] aside.lm-sidebar nav .lm-sub a svg { color: inherit; }
